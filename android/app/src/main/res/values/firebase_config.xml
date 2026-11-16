@@ -7,7 +7,7 @@
 <resources>
     <string name="project_id" translatable="false">my-tasks-32155</string>
     <string name="gcm_defaultSenderId" translatable="false">793853109375</string>
-    <string name="google_app_id" translatable="false"></string>
-    <string name="google_api_key" translatable="false"></string>
-    <string name="default_web_client_id" translatable="false"></string>
+    <string name="google_app_id" translatable="false">1:793853109375:android:62d1197856277cbf110b4a</string>
+    <string name="google_api_key" translatable="false">AIzaSyBZ5xGhf4DG_gRtB1ND5-UK1BeIRVuyJng</string>
+    <string name="default_web_client_id" translatable="false">793853109375-7ar2u0m0q35pg3ed13d4u44a7njvse9k.apps.googleusercontent.com</string>
 </resources>

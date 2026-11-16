@@ -1,9 +1,12 @@
 package app.mytasks
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -11,6 +14,7 @@ import app.mytasks.ui.AppTheme
 import app.mytasks.ui.MainScreen
 import app.mytasks.ui.SignInScreen
 import app.mytasks.ui.ThemeChoice
+import app.mytasks.ui.appColors
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -23,6 +27,16 @@ class MainActivity : ComponentActivity() {
             val session by app.session.collectAsStateWithLifecycle()
             val scope = rememberCoroutineScope()
             AppTheme(choice = ThemeChoice.entries.getOrElse(theme) { ThemeChoice.Black }) {
+                // Status and navigation bar icons follow the app theme, not the system theme.
+                val dark = appColors().isDark
+                LaunchedEffect(dark) {
+                    val style = if (dark) {
+                        SystemBarStyle.dark(Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                    }
+                    enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                }
                 when (val s = session) {
                     is Session.SignedOut -> SignInScreen(onSignIn = { app.signIn(this@MainActivity) })
                     is Session.SignedIn -> MainScreen(

@@ -322,7 +322,14 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                         onSelect = { scope.launch { pagerState.animateScrollToPage(it) } },
                         onAddSubList = { dialog = Dialog.NewSubList },
                     )
-                    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize(), key = { subs.getOrNull(it)?.id ?: it }) { page ->
+                    // Like the reference app, sub-lists change by tapping a tab, so a sideways
+                    // swipe on a task always means "delete".
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        userScrollEnabled = false,
+                        key = { subs.getOrNull(it)?.id ?: it },
+                    ) { page ->
                         val pageSub = subs.getOrNull(page)
                         if (pageSub != null) {
                             TaskPage(
