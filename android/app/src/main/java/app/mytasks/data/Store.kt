@@ -339,6 +339,13 @@ class Store(
         }
     }
 
+    /** Snooze: the reminder fires again at [until]. */
+    fun snooze(taskId: String, until: Long) {
+        current(taskId)?.let { put(it.copy(snoozedUntil = until, updatedAt = stamp(), updatedBy = deviceId)) }
+    }
+
+    fun hasTask(taskId: String): Boolean = current(taskId) != null
+
     fun setExpanded(taskId: String, expanded: Boolean) {
         current(taskId)?.let { put(it.copy(subTasksExpanded = expanded, updatedAt = stamp(), updatedBy = deviceId)) }
     }

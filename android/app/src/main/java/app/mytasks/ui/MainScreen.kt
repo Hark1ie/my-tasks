@@ -1,6 +1,11 @@
 package app.mytasks.ui
 
+import android.Manifest
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import app.mytasks.reminders.Notifications
+import app.mytasks.reminders.ReminderScheduler
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -163,6 +168,7 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
     val st by prefs.state.collectAsStateWithLifecycle()
     val atTop = st[Keys.insertNewTasks] == 0
 
+    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val drawerState = rememberDrawerState(if (st[Keys.showMenuOnOpen]) DrawerValue.Open else DrawerValue.Closed)
     val snackbar = remember { SnackbarHostState() }
     var listId by rememberSaveable { mutableStateOf(st[Keys.defaultList].ifEmpty { prefs.lastListId }) }
@@ -498,6 +504,11 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                 subLists = allSubLists,
                 onSave = { task, subDrafts, addAnother ->
                     store.saveTask(task, isNew, atTop, subDrafts.map { Triple(it.id, it.title, it.completed) })
+                    val fireAt = if (task.title.isBlank()) null else ReminderScheduler.fireTime(task, System.currentTimeMillis())
+                    if (fireAt != null) {
+                        if (!Notifications.canPost(context)) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        message("Reminder in: " + durationText(fireAt - System.currentTimeMillis()))
+                    }
                     val target = allSubLists.firstOrNull { it.id == task.subListId }
                     editing = if (addAnother && target != null) newDraft(target) to true else null
                 },
@@ -514,6 +525,19 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
     if (settingsOpen) {
         SettingsScreen(prefs = prefs, lists = lists, account = account, onSignOut = onSignOut, onClose = { settingsOpen = false })
     }
+}
+
+/** "2 days 3 hours", "45 minutes". */
+private fun durationText(ms: Long): String {
+    val minutes = (ms + 59_999) / 60_000
+    val d = minutes / 1440
+    val h = (minutes % 1440) / 60
+    val m = minutes % 60
+    val parts = ArrayList<String>()
+    if (d > 0) parts.add("$d " + if (d == 1L) "day" else "days")
+    if (h > 0) parts.add("$h " + if (h == 1L) "hour" else "hours")
+    if (m > 0 && d == 0L) parts.add("$m " + if (m == 1L) "minute" else "minutes")
+    return if (parts.isEmpty()) "less than a minute" else parts.joinToString(" ")
 }
 
 /** Opens the system share sheet with a task's title and notes. */

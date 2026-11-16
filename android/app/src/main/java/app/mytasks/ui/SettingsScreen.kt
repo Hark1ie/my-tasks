@@ -214,6 +214,15 @@ fun SettingsScreen(
             )
             number(Keys.customSnoozeMinutes, "Custom snooze duration", 0, 10080, "minutes")
             check(Keys.muteAlarmOnCall, "Mute alarm when on phone call", "Show a notification instead of sounding the alarm")
+            SettingRow("Allow full-screen alarms", "Let alarms open over the lock screen", onClick = {
+                try {
+                    context.startActivity(
+                        Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, android.net.Uri.parse("package:" + context.packageName)),
+                    )
+                } catch (_: Exception) {
+                    note = "Open your phone's Settings > Apps > My Tasks and allow full-screen notifications."
+                }
+            })
 
             Category("Backup/Restore")
             SettingRow("Backup", "Save your data to a file in Download", onClick = later)

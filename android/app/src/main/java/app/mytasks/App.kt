@@ -7,6 +7,14 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import app.mytasks.data.FirestoreBackend
+import app.mytasks.data.Keys
+import app.mytasks.reminders.Notifications
+import app.mytasks.reminders.ReminderScheduler
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import app.mytasks.data.MemoryBackend
 import app.mytasks.data.Prefs
 import app.mytasks.data.Store
@@ -36,6 +44,8 @@ class App : Application() {
     val session: StateFlow<Session> = _session
 
     private var store: Store? = null
+    private val scope = MainScope()
+    private var reminderJob: Job? = null
 
     /** False when this build has no Firebase connection details. */
     val syncConfigured: Boolean
@@ -44,6 +54,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         prefs = Prefs(this)
+        Notifications.ensureChannels(this)
         if (!syncConfigured) {
             _session.value = Session.Local(Store(MemoryBackend(), prefs.deviceId).also { it.start() })
             return
@@ -53,6 +64,8 @@ class App : Application() {
             store?.stop()
             store = null
             prefs.onSyncedChange = null
+            reminderJob?.cancel()
+            if (user == null) ReminderScheduler.cancelAll(this)
             _session.value = if (user == null) {
                 Session.SignedOut
             } else {
@@ -61,9 +74,35 @@ class App : Application() {
                 prefs.onSyncedChange = { s.putSettings(it) }
                 s.start()
                 store = s
+                // Keep the phone's alarms in step with the tasks, whichever device changed them.
+                reminderJob = scope.launch {
+                    s.tasks.collect { tasks -> if (s.ready.value || tasks.isNotEmpty()) ReminderScheduler.sync(this@App, tasks) }
+                }
                 Session.SignedIn(s, user.email)
             }
         }
+    }
+
+    /** Waits, for a few seconds at most, until the signed-in data has loaded this task. */
+    private suspend fun storeWith(taskId: String): Store? = withTimeoutOrNull(8_000) {
+        var found: Store? = null
+        while (found == null) {
+            val s = store
+            if (s != null && s.hasTask(taskId)) found = s else delay(100)
+        }
+        found
+    }
+
+    /** MARK AS DONE from a reminder. The change is saved offline and synced when possible. */
+    suspend fun completeTask(taskId: String) {
+        val s = storeWith(taskId) ?: return
+        val task = s.tasks.value.firstOrNull { it.id == taskId } ?: return
+        if (!task.completed) s.setCompleted(task, true, keepHistory = prefs.state.value[Keys.saveRecurringHistory])
+    }
+
+    /** SNOOZE from a reminder. */
+    suspend fun snoozeTask(taskId: String, until: Long) {
+        storeWith(taskId)?.snooze(taskId, until)
     }
 
     /** Google sign-in. Returns an error message, or null on success. */
