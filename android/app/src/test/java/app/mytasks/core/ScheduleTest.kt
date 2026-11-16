@@ -4,12 +4,13 @@ import java.util.Calendar
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Before
 import org.junit.Test
 
 class ScheduleTest {
-    @Before
-    fun zone() = TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"))
+    // Set before any time below is computed, so every value uses the same zone.
+    init {
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"))
+    }
 
     private fun at(y: Int, m: Int, d: Int, h: Int = 0, min: Int = 0): Long =
         Calendar.getInstance().apply { clear(); set(y, m - 1, d, h, min, 0) }.timeInMillis
