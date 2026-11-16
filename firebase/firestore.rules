@@ -1,0 +1,52 @@
+rules_version = '2';
+
+// My Tasks: every user can read and write only their own data.
+//
+// Layout: users/{uid}/{collection}/{docId}
+//   collection is one of: taskLists, subLists, tasks, subTasks, tags,
+//   filteredLists, settings
+//
+// "Newest edit wins" is enforced here as well as in the apps: an update is
+// rejected if the stored copy has a later updatedAt. This stops an old edit
+// made offline from overwriting a newer one when the device reconnects.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function hasStamp(data) {
+      return data.updatedAt is int
+        && data.updatedBy is string
+        && data.updatedBy.size() > 0
+        && data.updatedBy.size() <= 64;
+    }
+
+    function isKnownCollection(name) {
+      return name in ['taskLists', 'subLists', 'tasks', 'subTasks', 'tags', 'filteredLists', 'settings'];
+    }
+
+    match /users/{uid}/{collection}/{docId} {
+      allow read: if isOwner(uid);
+
+      allow create: if isOwner(uid)
+        && isKnownCollection(collection)
+        && hasStamp(request.resource.data);
+
+      allow update: if isOwner(uid)
+        && isKnownCollection(collection)
+        && hasStamp(request.resource.data)
+        && request.resource.data.updatedAt >= resource.data.updatedAt;
+
+      // Hard delete is only used to empty old Deleted Items and to delete the account.
+      allow delete: if isOwner(uid);
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
