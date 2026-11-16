@@ -169,8 +169,8 @@ class Store(
         return sub
     }
 
-    fun editSubList(sub: SubList, title: String) =
-        put(sub.copy(title = title.trim(), updatedAt = stamp(), updatedBy = deviceId))
+    fun editSubList(sub: SubList, title: String, completedSubListId: String? = sub.completedSubListId) =
+        put(sub.copy(title = title.trim(), completedSubListId = completedSubListId, updatedAt = stamp(), updatedBy = deviceId))
 
     fun setSort(sub: SubList, sortOrder: Int) =
         put(sub.copy(sortOrder = sortOrder, updatedAt = stamp(), updatedBy = deviceId))
@@ -269,7 +269,15 @@ class Store(
                 put(it.copy(completed = false, completedAt = null, updatedAt = stamp(), updatedBy = deviceId))
             }
         } else {
-            put(task.copy(completed = completed, completedAt = if (completed) t else null, updatedAt = t, updatedBy = deviceId))
+            // "Where should completed tasks go?": a completed task can move to another sub-list.
+            val home = _subLists.value.firstOrNull { it.id == task.subListId }
+            val target = if (completed) _subLists.value.firstOrNull { it.id == home?.completedSubListId && it.id != task.subListId } else null
+            val moved = if (target != null) {
+                task.copy(listId = target.listId, subListId = target.id, rank = Rank.before(ordered(target.id).firstOrNull()?.rank))
+            } else {
+                task
+            }
+            put(moved.copy(completed = completed, completedAt = if (completed) t else null, updatedAt = t, updatedBy = deviceId))
         }
     }
 

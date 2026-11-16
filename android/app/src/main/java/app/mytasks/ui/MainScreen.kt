@@ -296,7 +296,17 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                 TopAppBar(
                     expandedHeight = 56.dp,
                     title = {
-                        Text(list?.title ?: "", fontWeight = FontWeight.Medium, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // Tapping the list name opens "List Name", as in the reference app.
+                        Text(
+                            list?.title ?: "",
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 20.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .padding(start = 16.dp)
+                                .clickable { list?.let { dialog = Dialog.EditList(it) } },
+                        )
                     },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
@@ -390,7 +400,14 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                         },
                         selected = pagerState.currentPage,
                         colors = colors,
-                        onSelect = { scope.launch { pagerState.animateScrollToPage(it) } },
+                        // Tapping the open tab edits the sub-list; tapping another tab switches to it.
+                        onSelect = { index ->
+                            if (index == pagerState.currentPage) {
+                                subs.getOrNull(index)?.let { dialog = Dialog.EditSubList(it) }
+                            } else {
+                                scope.launch { pagerState.animateScrollToPage(index) }
+                            }
+                        },
                         onAddSubList = { dialog = Dialog.NewSubList },
                     )
                     // Like the reference app, sub-lists change by tapping a tab, so a sideways
@@ -421,10 +438,10 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
 
     when (val d = dialog) {
         null -> Unit
-        is Dialog.NewList -> ListDialog("New List", null, onDismiss = { dialog = null }) { title, color ->
+        is Dialog.NewList -> ListDialog(null, onDismiss = { dialog = null }) { title, color ->
             openList(store.addList(title, color).id)
         }
-        is Dialog.EditList -> ListDialog("Edit List", d.list, onDismiss = { dialog = null }, onDelete = {
+        is Dialog.EditList -> ListDialog(d.list, onDismiss = { dialog = null }, onDelete = {
             if (st[Keys.deleteListConfirmation]) {
                 dialog = Dialog.DeleteList(d.list)
             } else if (lists.size > 1) {
@@ -451,31 +468,22 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                 message("This is your only list.")
             }
         }
-        is Dialog.NewSubList -> TextDialog("New Sub List", "", "Sub List Name", onDismiss = { dialog = null }) { title ->
+        is Dialog.NewSubList -> SubListDialog(null, subs, onDismiss = { dialog = null }) { title, target ->
             list?.let {
-                store.addSubList(it.id, title)
+                val created = store.addSubList(it.id, title)
+                if (target != null) store.editSubList(created, title, target)
                 scope.launch { pagerState.animateScrollToPage(subs.size) }
             }
         }
-        is Dialog.EditSubList -> TextDialog("Edit Sub List", d.sub.title, "Sub List Name", onDismiss = { dialog = null }) { title ->
-            store.editSubList(d.sub, title)
-        }
-        is Dialog.ReorderLists -> ReorderDialog("Reorder Task Lists", lists.map { it.id to it.title }, onDismiss = { dialog = null }) { id, order ->
-            store.moveList(id, order)
-        }
-        is Dialog.ReorderSubLists -> ReorderDialog("Reorder sub lists", subs.map { it.id to it.title }, onDismiss = { dialog = null }) { id, order ->
-            store.moveSubList(id, order)
-        }
-        is Dialog.MoveSubList -> ChoiceDialog(
-            title = "Move Sub List",
-            options = lists.map { it.title },
-            selected = lists.indexOfFirst { it.id == d.sub.listId },
+        is Dialog.EditSubList -> SubListDialog(
+            sub = d.sub,
+            others = subs.filter { it.id != d.sub.id },
             onDismiss = { dialog = null },
-        ) { index ->
-            if (!store.moveSubListTo(d.sub, lists[index].id)) {
-                message("It is not possible to move the last sub list. A task list must have at least one sub list.")
-            }
-        }
+            onDelete = {
+                dialog = null
+                if (!store.deleteSubList(d.sub)) message("A task list must have at least one sub list.")
+            },
+        ) { title, target -> store.editSubList(d.sub, title, target) }
         is Dialog.Split -> ConfirmDialog(
             title = "Split into multiple tasks?",
             text = "Line breaks have been detected, would you like to split the text into multiple tasks?",
@@ -769,8 +777,8 @@ private fun TaskRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Highlight strip down the left edge.
-            Box(Modifier.width(8.dp).fillMaxHeight().background(if (task.highlight) Color(task.highlightColor) else Color.Transparent))
-            IconButton(onClick = onToggle) {
+            Box(Modifier.width(4.dp).fillMaxHeight().background(if (task.highlight) Color(task.highlightColor) else Color.Transparent))
+            IconButton(onClick = onToggle, modifier = Modifier.size(44.dp)) {
                 Icon(
                     imageVector = if (task.completed) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
                     contentDescription = if (task.completed) "Mark as not done" else "Mark as done",
@@ -839,7 +847,7 @@ private fun TaskRow(
                 }
             }
             if (handle != null) {
-                Box(handle.width(40.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                Box(handle.width(44.dp).fillMaxHeight().padding(end = 8.dp), contentAlignment = Alignment.Center) {
                     DragHandle(colors.checkbox)
                 }
             } else {
@@ -878,9 +886,9 @@ private fun DragHandle(color: Color) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         repeat(6) {
             Row {
-                Box(Modifier.size(3.dp).background(color, CircleShape))
-                Spacer(Modifier.width(3.dp))
-                Box(Modifier.size(3.dp).background(color, CircleShape))
+                Box(Modifier.size(4.dp).background(color, CircleShape))
+                Spacer(Modifier.width(2.dp))
+                Box(Modifier.size(4.dp).background(color, CircleShape))
             }
         }
     }

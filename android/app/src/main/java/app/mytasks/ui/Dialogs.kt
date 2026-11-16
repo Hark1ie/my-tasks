@@ -90,54 +90,6 @@ fun TextDialog(title: String, initial: String, hint: String, onDismiss: () -> Un
     )
 }
 
-/** Name and colour of a task list. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun ListDialog(
-    title: String,
-    list: TaskList?,
-    onDismiss: () -> Unit,
-    onDelete: (() -> Unit)? = null,
-    onSave: (String, Long) -> Unit,
-) {
-    val colors = appColors()
-    var value by remember { mutableStateOf(fieldValue(list?.title ?: "")) }
-    var color by remember { mutableStateOf(list?.color ?: LIST_COLORS[0]) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                NameField(value, "Let's give it a name…") { value = it }
-                Spacer(Modifier.height(16.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    LIST_COLORS.forEach { c ->
-                        Box(
-                            Modifier
-                                .size(32.dp)
-                                .background(Color(c), CircleShape)
-                                .border(if (c == color) 3.dp else 0.dp, if (c == color) colors.text else Color.Transparent, CircleShape)
-                                .clickable { color = c },
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            DialogButton("SAVE") {
-                if (value.text.isNotBlank()) onSave(value.text, color)
-                onDismiss()
-            }
-        },
-        dismissButton = {
-            Row {
-                if (onDelete != null) DialogButton("DELETE", onDelete)
-                DialogButton("CANCEL", onDismiss)
-            }
-        },
-    )
-}
-
 @Composable
 fun ConfirmDialog(
     title: String,

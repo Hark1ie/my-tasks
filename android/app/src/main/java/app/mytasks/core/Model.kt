@@ -79,9 +79,12 @@ data class SubList(
     val title: String,
     val sortOrder: Int = SortOrder.USER_DRAGGABLE,
     val hideCompleted: Boolean = false,
+    /** "Where should completed tasks go?": another sub-list, or null for this one. */
+    val completedSubListId: String? = null,
 ) : Entity {
     override fun toMap() = meta() + mapOf(
         "rank" to rank, "listId" to listId, "title" to title, "sortOrder" to sortOrder, "hideCompleted" to hideCompleted,
+        "completedSubListId" to completedSubListId,
     )
 
     companion object {
@@ -89,6 +92,7 @@ data class SubList(
             id, m.long("createdAt"), m.long("updatedAt"), m.longOrNull("deletedAt"), m.string("updatedBy"),
             rank = m.string("rank", "V"), listId = m.string("listId"), title = m.string("title"),
             sortOrder = m.long("sortOrder").toInt(), hideCompleted = m["hideCompleted"] as? Boolean ?: false,
+            completedSubListId = m["completedSubListId"] as? String,
         )
     }
 }

@@ -95,6 +95,8 @@ export interface SubList extends SyncMeta, Ranked {
   title: string;
   sortOrder: SortOrder;
   hideCompleted: boolean;
+  /** "Where should completed tasks go?": another sub-list, or null for this one. */
+  completedSubListId: string | null;
 }
 
 export interface Task extends SyncMeta, Ranked {
