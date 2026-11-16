@@ -32,12 +32,20 @@ A personal to-do app for Android, Windows and the web, with real-time sync and a
 - Project: My Tasks (`my-tasks-32155`), Spark plan.
 - Firestore: Standard edition, `(default)` database, location asia-south1 (Mumbai), production mode.
 - Security rules: published from `firebase/firestore.rules` on 16 Nov 2026.
-- Still to do in the console: enable Google as a sign-in provider; register the web app and the Android app (the Android app needs the signing key fingerprint from the first build).
+- Authentication: Google sign-in enabled.
+- Apps: Android `app.mytasks` (signing fingerprint added) and web "My Tasks Web". Connection details are in `android/app/src/main/res/values/firebase_config.xml` and `firebase/web-config.json`.
+- The Android app currently uses the project's web API key. If sign-in ever reports an API key error, switch to the Android key from the console.
+
+## Builds
+
+- Repo: `Hark1ie/my-tasks` (private). Every push to `main` that touches `android/` builds a signed APK and publishes it on the Releases page as `android-<build number>`.
+- The signing key is kept in `android/signing/` because repository secrets could not be set from the build session. Keep the repo private.
+- Release `android-1` was signed with a temporary key; ignore it.
 
 ## Milestones
 
-1. Data model, Firebase project, security rules, shared sync logic with tests. **Done except Google sign-in provider and app registration, which move to the start of milestone 2.**
-2. Android main screen: lists, sub-list tabs, tasks, quick add, drag reorder, swipe delete, themes. First installable APK.
+1. Data model, Firebase project, security rules, shared sync logic with tests. **Done.**
+2. Android main screen. **Build 5 (16 Nov 2026), waiting for the owner's test on the phone.** Working: Google sign-in, synced lists, sub-list tabs, add/edit/complete tasks, quick add with line splitting, drag reorder, swipe to delete with undo, list menu (sort, complete all, uncheck, hide/remove completed, delete all), share list, themes. Still to do from this milestone: reorder task lists and sub-lists, move and duplicate sub-list, select multiple, search. New task and edit task are simple title dialogs until milestone 3.
 3. Task detail, reminders, alarms, repeat, notifications, quick tile, shortcut.
 4. Settings screen.
 5. Android widgets (List, Large, Calendar).
@@ -52,3 +60,5 @@ A personal to-do app for Android, Windows and the web, with real-time sync and a
 - When an all-day reminder fires.
 - Exact text layout of "share list".
 - Percentage heading format.
+- Names of the first list and sub-list on a fresh install (currently "To do" and "Sub List 1").
+- Swipe-to-delete background and icons.
