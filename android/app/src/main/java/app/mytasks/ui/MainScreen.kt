@@ -484,6 +484,22 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                 if (!store.deleteSubList(d.sub)) message("A task list must have at least one sub list.")
             },
         ) { title, target -> store.editSubList(d.sub, title, target) }
+        is Dialog.ReorderLists -> ReorderDialog("Reorder Task Lists", lists.map { it.id to it.title }, onDismiss = { dialog = null }) { id, order ->
+            store.moveList(id, order)
+        }
+        is Dialog.ReorderSubLists -> ReorderDialog("Reorder sub lists", subs.map { it.id to it.title }, onDismiss = { dialog = null }) { id, order ->
+            store.moveSubList(id, order)
+        }
+        is Dialog.MoveSubList -> ChoiceDialog(
+            title = "Move Sub List",
+            options = lists.map { it.title },
+            selected = lists.indexOfFirst { it.id == d.sub.listId },
+            onDismiss = { dialog = null },
+        ) { index ->
+            if (!store.moveSubListTo(d.sub, lists[index].id)) {
+                message("It is not possible to move the last sub list. A task list must have at least one sub list.")
+            }
+        }
         is Dialog.Split -> ConfirmDialog(
             title = "Split into multiple tasks?",
             text = "Line breaks have been detected, would you like to split the text into multiple tasks?",
