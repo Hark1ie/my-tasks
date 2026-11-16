@@ -111,7 +111,7 @@ class App:
         x1, y1, x2, y2 = node["b"]
         return (x1 + x2) // 2, (y1 + y2) // 2
 
-    def find(self, nodes, text=None, contains=None, desc=None, rid=None, pick="first"):
+    def find(self, nodes, text=None, contains=None, desc=None, rid=None, cls=None, pick="first"):
         hits = []
         for n in nodes:
             if text is not None and n["text"].strip().lower() != text.lower():
@@ -121,6 +121,8 @@ class App:
             if desc is not None and n["desc"].strip().lower() != desc.lower():
                 continue
             if rid is not None and not n["rid"].endswith("id/" + rid):
+                continue
+            if cls is not None and not n["cls"].endswith(cls):
                 continue
             hits.append(n)
         if not hits:
@@ -237,27 +239,65 @@ class App:
             self.shot("overflow_menu")
             self.back()
 
+    def tick(self):
+        nodes = self.dump()
+        if self.tap_first(nodes, [{"desc": "Mark as done", "pick": "lowest"}]):
+            self.shot("task_ticked")
+
+    def new_sub_list(self):
+        nodes = self.dump()
+        if not self.tap_first(nodes, [{"desc": "New Sub List"}], wait=2):
+            return
+        nodes = self.dump()
+        if self.tap_first(nodes, [{"cls": "EditText", "pick": "highest"}]):
+            self.type("Tuesday 17th")
+        shell("input keyevent 111")
+        time.sleep(1)
+        self.shot("new_sub_list_dialog")
+        self.tap_first(self.dump(), [{"text": "SAVE"}], wait=2)
+        self.shot("two_tabs")
+        self.tap_first(self.dump(), [{"contains": "SUB LIST 1"}], wait=2)
+
+    def sort_dialog(self):
+        if self.tap_first(self.dump(), [{"desc": "More options"}]) and self.tap_first(self.dump(), [{"text": "Sort"}], wait=2):
+            self.shot("sort_dialog")
+            self.back()
+
     def new_task(self):
         nodes = self.dump()
         if not self.tap_first(nodes, self.ids["fab"], wait=2.5):
             return
-        self.shot("task_screen")
+        self.type("Read chapter 4")
         shell("input keyevent 111")
         time.sleep(1)
+        self.shot("task_screen")
         self.swipe_up()
         self.shot("task_screen_scroll1")
         self.swipe_up()
         self.shot("task_screen_scroll2")
-        self.back()
-        self.shot("task_screen_after_back")
-        self.back()
+        self.back(2)
+        self.shot("task_screen_back_prompt")
+        self.tap_first(self.dump(), [{"text": "SAVE"}, {"desc": "Save"}], wait=2)
+        self.shot("after_new_task")
 
     def open_task(self):
         nodes = self.dump()
-        if self.tap_first(nodes, [{"text": "Triple integral lec"}], wait=2.5):
-            self.shot("existing_task")
-            self.back()
-            self.shot("existing_task_after_back")
+        if not self.tap_first(nodes, [{"text": "Triple integral lec"}], wait=2.5):
+            return
+        self.shot("existing_task")
+        if self.tap_first(self.dump(), [{"text": "No date set"}], wait=2.5):
+            self.shot("date_picker")
+            self.tap_first(self.dump(), [{"text": "OK"}], wait=2)
+            self.shot("task_with_date")
+            if self.tap_first(self.dump(), [{"text": "Don't remind me"}], wait=2):
+                self.shot("reminder_dialog")
+                self.tap_first(self.dump(), [{"text": "Remind me when due"}], wait=2)
+            if self.tap_first(self.dump(), [{"text": "Does not repeat"}], wait=2):
+                self.shot("repeat_dialog")
+                self.tap_first(self.dump(), [{"text": "Daily"}], wait=2)
+            self.shot("task_with_reminder_repeat")
+        self.tap_first(self.dump(), [{"desc": "Save"}], wait=2.5)
+        self.shot("after_saving_task")
 
     def run(self):
         if not os.path.exists(self.apk):
@@ -269,11 +309,14 @@ class App:
         self.step("dismiss dialogs", self.dismiss_dialogs)
         self.step("main", lambda: self.shot("main"))
         self.step("add tasks", self.add_tasks)
+        self.step("open task", self.open_task)
+        self.step("tick", self.tick)
+        self.step("new task", self.new_task)
+        self.step("new sub list", self.new_sub_list)
         self.step("list dialog", self.list_dialog)
         self.step("sub list dialog", self.sub_list_dialog)
         self.step("overflow", self.overflow)
-        self.step("open task", self.open_task)
-        self.step("new task", self.new_task)
+        self.step("sort dialog", self.sort_dialog)
         self.step("main again", lambda: self.shot("main_again"))
         self.step("drawer", self.drawer)
         self.step("settings", self.settings)
@@ -285,7 +328,7 @@ class App:
 
 
 MINE = App("mine", "app.mytasks", "android/app/build/outputs/apk/debug/app-debug.apk", {
-    "quick_add_field": [{"contains": "Quick add task"}],
+    "quick_add_field": [{"cls": "EditText", "pick": "lowest"}],
     "quick_add_send": [{"desc": "Add task", "pick": "lowest"}],
     "menu": [{"desc": "Menu"}],
     "list_title": [{"text": "To do"}],

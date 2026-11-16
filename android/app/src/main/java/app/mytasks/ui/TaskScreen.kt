@@ -3,6 +3,7 @@ package app.mytasks.ui
 import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -390,15 +391,20 @@ fun TaskScreen(
 
             // Priority
             if (settings[Keys.detailPriority]) Section(Icons.Filled.Flag, "Priority") {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                // Four equal columns, so "High" never runs off a narrow screen.
+                Row(Modifier.fillMaxWidth()) {
                     listOf(Priority.NONE to "None", Priority.LOW to "Low", Priority.MEDIUM to "Medium", Priority.HIGH to "High").forEach { (value, label) ->
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { task = task.copy(priority = value) }) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f).clickable { task = task.copy(priority = value) },
+                        ) {
                             RadioButton(
                                 selected = task.priority == value,
                                 onClick = { task = task.copy(priority = value) },
                                 colors = RadioButtonDefaults.colors(selectedColor = colors.accent, unselectedColor = colors.textSecondary),
+                                modifier = Modifier.size(32.dp),
                             )
-                            Text(label, color = colors.text, fontSize = 13.sp)
+                            Text(label, color = colors.text, fontSize = 13.sp, maxLines = 1)
                         }
                     }
                 }
@@ -414,7 +420,8 @@ fun TaskScreen(
                         Modifier
                             .padding(end = 12.dp)
                             .size(24.dp)
-                            .background(if (task.highlight) Color(task.highlightColor) else colors.surface, CircleShape)
+                            .background(if (task.highlight) Color(task.highlightColor) else Color.Transparent, CircleShape)
+                            .border(1.5.dp, if (task.highlight) Color(task.highlightColor) else colors.checkbox, CircleShape)
                             .clickable { picker = Picker.HighlightColor },
                     )
                 },
