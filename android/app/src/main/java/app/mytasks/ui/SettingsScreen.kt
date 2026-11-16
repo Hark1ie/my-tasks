@@ -107,6 +107,8 @@ fun SettingsScreen(
     }
 
     BackHandler { onClose() }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    androidx.compose.runtime.LaunchedEffect(Unit) { focusManager.clearFocus() }
 
     Scaffold(
         containerColor = colors.background,

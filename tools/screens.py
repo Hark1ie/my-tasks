@@ -225,13 +225,13 @@ class App:
         nodes = self.dump()
         if self.tap_first(nodes, self.ids["list_title"], wait=2):
             self.shot("list_name_dialog")
-            self.back()
+            self.tap_first(self.dump(), [{"text": "CANCEL"}], wait=2)
 
     def sub_list_dialog(self):
         nodes = self.dump()
         if self.tap_first(nodes, self.ids["tab"], wait=2):
             self.shot("sub_list_dialog")
-            self.back()
+            self.tap_first(self.dump(), [{"text": "CANCEL"}], wait=2)
 
     def overflow(self):
         nodes = self.dump()
@@ -257,6 +257,8 @@ class App:
         self.tap_first(self.dump(), [{"text": "SAVE"}], wait=2)
         self.shot("two_tabs")
         self.tap_first(self.dump(), [{"contains": "SUB LIST 1"}], wait=2)
+        shell("input keyevent 111")
+        time.sleep(1)
 
     def sort_dialog(self):
         if self.tap_first(self.dump(), [{"desc": "More options"}]) and self.tap_first(self.dump(), [{"text": "Sort"}], wait=2):
@@ -278,6 +280,8 @@ class App:
         self.back(2)
         self.shot("task_screen_back_prompt")
         self.tap_first(self.dump(), [{"text": "SAVE"}, {"desc": "Save"}], wait=2)
+        shell("input keyevent 111")
+        time.sleep(1)
         self.shot("after_new_task")
 
     def open_task(self):
