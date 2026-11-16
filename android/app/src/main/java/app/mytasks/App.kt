@@ -75,10 +75,14 @@ class App : Application() {
         } else {
             "Google did not return a sign-in token."
         }
-    } catch (e: androidx.credentials.exceptions.GetCredentialCancellationException) {
-        "Sign-in was cancelled."
+    } catch (e: androidx.credentials.exceptions.GetCredentialException) {
+        // Show Google's own reason. A setup problem also arrives as "cancelled",
+        // so the generic wording alone would hide it.
+        android.util.Log.w("MyTasks", "Google sign-in failed", e)
+        "Sign-in did not finish.\n${e.javaClass.simpleName}\n${e.type}\n${e.message ?: "(no details)"}"
     } catch (e: Exception) {
-        e.message ?: "Sign-in failed."
+        android.util.Log.w("MyTasks", "Sign-in failed", e)
+        "Sign-in failed.\n${e.javaClass.simpleName}\n${e.message ?: "(no details)"}"
     }
 
     suspend fun signOut(activity: Activity) {
