@@ -8,3 +8,4 @@ local.properties
 google-services.json
 .env
 .DS_Store
+!android/signing/release.keystore

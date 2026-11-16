@@ -6,7 +6,15 @@ plugins {
 
 // The build server passes the run number so every build installs over the previous one.
 val buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
-val keystorePath: String? = System.getenv("KEYSTORE_FILE")
+
+// Signing key and its password live in android/signing (see the README there).
+val signingDir = rootProject.file("signing")
+val signingProps = java.util.Properties().apply {
+    val f = signingDir.resolve("signing.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val keystoreFile = signingDir.resolve("release.keystore")
+val hasReleaseKey = keystoreFile.exists() && signingProps.getProperty("storePassword") != null
 
 android {
     namespace = "app.mytasks"
@@ -21,12 +29,12 @@ android {
     }
 
     signingConfigs {
-        if (keystorePath != null) {
+        if (hasReleaseKey) {
             create("release") {
-                storeFile = file(keystorePath)
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS") ?: "mytasks"
-                keyPassword = System.getenv("KEYSTORE_PASSWORD")
+                storeFile = keystoreFile
+                storePassword = signingProps.getProperty("storePassword")
+                keyAlias = signingProps.getProperty("keyAlias") ?: "mytasks"
+                keyPassword = signingProps.getProperty("storePassword")
             }
         }
     }
