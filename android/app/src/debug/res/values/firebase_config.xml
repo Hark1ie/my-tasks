@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Test builds run without sign-in or sync, with data kept in memory only. -->
+<resources>
+    <string name="google_app_id" translatable="false"></string>
+    <string name="default_web_client_id" translatable="false"></string>
+</resources>

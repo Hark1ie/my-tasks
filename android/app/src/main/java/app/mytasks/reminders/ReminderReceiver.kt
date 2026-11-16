@@ -88,7 +88,8 @@ object Notifications {
 
     fun idFor(taskId: String): Int = taskId.hashCode()
 
-    fun canPost(context: Context): Boolean =
+    /** Before Android 13 there is no notification permission to ask for. */
+    fun canPost(context: Context): Boolean = android.os.Build.VERSION.SDK_INT < 33 ||
         context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     fun ensureChannels(context: Context) {
