@@ -9,6 +9,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,6 +43,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -73,6 +79,7 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -97,6 +104,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.mytasks.core.Lists
 import app.mytasks.core.SortOrder
 import app.mytasks.core.SubList
+import app.mytasks.core.SubTask
+import app.mytasks.core.PRIORITY_COLORS
+import app.mytasks.core.Priority
+import app.mytasks.core.ReminderMode
 import app.mytasks.core.Task
 import app.mytasks.core.TaskList
 import app.mytasks.core.isLive
@@ -113,8 +124,9 @@ private sealed interface Dialog {
     data class DeleteList(val list: TaskList) : Dialog
     data object NewSubList : Dialog
     data class EditSubList(val sub: SubList) : Dialog
-    data object NewTask : Dialog
-    data class EditTask(val task: Task) : Dialog
+    data object ReorderLists : Dialog
+    data object ReorderSubLists : Dialog
+    data class MoveSubList(val sub: SubList) : Dialog
     data class Split(val text: String, val lines: List<String>) : Dialog
     data object Sort : Dialog
     data object Settings : Dialog
@@ -129,6 +141,7 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
     val lists by store.lists.collectAsStateWithLifecycle()
     val allSubLists by store.subLists.collectAsStateWithLifecycle()
     val allTasks by store.tasks.collectAsStateWithLifecycle()
+    val allSubTasks by store.subTasks.collectAsStateWithLifecycle()
     val ready by store.ready.collectAsStateWithLifecycle()
     val theme by prefs.theme.collectAsStateWithLifecycle()
 
@@ -137,10 +150,13 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
     var listId by rememberSaveable { mutableStateOf(prefs.lastListId) }
     var dialog by remember { mutableStateOf<Dialog?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    // The task open in the task screen, and whether it is a new, unsaved one.
+    var editing by remember { mutableStateOf<Pair<Task, Boolean>?>(null) }
 
     val list = lists.firstOrNull { it.id == listId } ?: lists.firstOrNull()
     val subs = remember(allSubLists, list?.id) { allSubLists.filter { it.listId == list?.id } }
     val liveTasks = remember(allTasks) { allTasks.filter { it.isLive } }
+    val subTasksByTask = remember(allSubTasks) { allSubTasks.groupBy { it.taskId } }
     val now = System.currentTimeMillis()
 
     val pagerState = rememberPagerState(pageCount = { subs.size })
@@ -207,7 +223,10 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                         dialog = Dialog.NewList
                     }
                     DrawerRow("New Filtered List", colors = colors) { later() }
-                    DrawerRow("Reorder Task Lists", colors = colors) { later() }
+                    DrawerRow("Reorder Task Lists", colors = colors) {
+                        scope.launch { drawerState.close() }
+                        dialog = Dialog.ReorderLists
+                    }
                     DrawerRow("Edit List", colors = colors) {
                         scope.launch { drawerState.close() }
                         list?.let { dialog = Dialog.EditList(it) }
@@ -257,11 +276,18 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                 val close = { menuOpen = false }
                                 MenuEntry("Edit Sub List", close) { sub?.let { dialog = Dialog.EditSubList(it) } }
-                                MenuEntry("Reorder Sub Lists", close) { later() }
-                                MenuEntry("Move Sub List", close) { later() }
+                                MenuEntry("Reorder Sub Lists", close) { dialog = Dialog.ReorderSubLists }
+                                MenuEntry("Move Sub List", close) {
+                                    sub?.let { dialog = Dialog.MoveSubList(it) }
+                                }
                                 MenuEntry("Sort", close) { dialog = Dialog.Sort }
                                 MenuEntry("Select Multiple…", close) { later() }
-                                MenuEntry("Duplicate Sub List", close) { later() }
+                                MenuEntry("Duplicate Sub List", close) {
+                                    sub?.let {
+                                        store.duplicateSubList(it)
+                                        scope.launch { pagerState.animateScrollToPage(subs.size) }
+                                    }
+                                }
                                 MenuEntry("Uncheck Completed", close) { sub?.let { store.uncheckCompleted(it) } }
                                 MenuEntry("Complete All", close) { sub?.let { store.completeAll(it) } }
                                 MenuEntry(if (sub?.hideCompleted == true) "Show Completed" else "Hide Completed", close) {
@@ -287,7 +313,7 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
             floatingActionButton = {
                 if (sub != null) {
                     FloatingActionButton(
-                        onClick = { dialog = Dialog.NewTask },
+                        onClick = { editing = store.draftTask(sub) to true },
                         shape = CircleShape,
                         containerColor = colors.accent,
                         contentColor = Color.Black,
@@ -335,10 +361,11 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                             TaskPage(
                                 sub = pageSub,
                                 tasks = liveTasks.filter { it.subListId == pageSub.id },
+                                subTasks = subTasksByTask,
                                 prefs = prefs,
                                 store = store,
                                 onDeleted = { id -> deleted("Task deleted", listOf(id)) },
-                                onOpen = { dialog = Dialog.EditTask(it) },
+                                onOpen = { editing = it to false },
                             )
                         }
                     }
@@ -377,11 +404,21 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
         is Dialog.EditSubList -> TextDialog("Edit Sub List", d.sub.title, "Sub List Name", onDismiss = { dialog = null }) { title ->
             store.editSubList(d.sub, title)
         }
-        is Dialog.NewTask -> TextDialog("New Task", "", "Add task", onDismiss = { dialog = null }) { title ->
-            sub?.let { store.addTask(it, title, prefs.insertNewTasksAtTop) }
+        is Dialog.ReorderLists -> ReorderDialog("Reorder Task Lists", lists.map { it.id to it.title }, onDismiss = { dialog = null }) { id, order ->
+            store.moveList(id, order)
         }
-        is Dialog.EditTask -> TextDialog("Edit Task", d.task.title, "Add task", onDismiss = { dialog = null }) { title ->
-            store.editTaskTitle(d.task.id, title)
+        is Dialog.ReorderSubLists -> ReorderDialog("Reorder sub lists", subs.map { it.id to it.title }, onDismiss = { dialog = null }) { id, order ->
+            store.moveSubList(id, order)
+        }
+        is Dialog.MoveSubList -> ChoiceDialog(
+            title = "Move Sub List",
+            options = lists.map { it.title },
+            selected = lists.indexOfFirst { it.id == d.sub.listId },
+            onDismiss = { dialog = null },
+        ) { index ->
+            if (!store.moveSubListTo(d.sub, lists[index].id)) {
+                message("It is not possible to move the last sub list. A task list must have at least one sub list.")
+            }
         }
         is Dialog.Split -> ConfirmDialog(
             title = "Split into multiple tasks?",
@@ -407,6 +444,39 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
             onDismiss = { dialog = null },
         )
     }
+    editing?.let { (draft, isNew) ->
+        key(draft.id) {
+            TaskScreen(
+                initial = draft,
+                initialSubTasks = if (isNew) emptyList() else subTasksByTask[draft.id].orEmpty(),
+                isNew = isNew,
+                lists = lists,
+                subLists = allSubLists,
+                onSave = { task, subDrafts, addAnother ->
+                    store.saveTask(task, isNew, prefs.insertNewTasksAtTop, subDrafts.map { Triple(it.id, it.title, it.completed) })
+                    val target = allSubLists.firstOrNull { it.id == task.subListId }
+                    editing = if (addAnother && target != null) store.draftTask(target) to true else null
+                },
+                onDelete = {
+                    store.deleteTask(draft.id)
+                    deleted("Task deleted", listOf(draft.id))
+                    editing = null
+                },
+                onShare = { shareTask(context, it) },
+                onClose = { editing = null },
+            )
+        }
+    }
+}
+
+/** Opens the system share sheet with a task's title and notes. */
+private fun shareTask(context: android.content.Context, task: Task) {
+    val text = if (task.notes.isBlank()) task.title else task.title + "\n" + task.notes
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(send, "Share task"))
 }
 
 @Composable
@@ -515,6 +585,7 @@ private fun SubListTabs(
 private fun TaskPage(
     sub: SubList,
     tasks: List<Task>,
+    subTasks: Map<String, List<SubTask>>,
     prefs: Prefs,
     store: Store,
     onDeleted: (String) -> Unit,
@@ -570,11 +641,14 @@ private fun TaskPage(
                 ) {
                     TaskRow(
                         task = task,
+                        subTasks = subTasks[task.id].orEmpty(),
                         colors = colors,
                         strikethrough = prefs.strikethroughCompleted,
                         dragging = dragging,
                         handle = handle,
                         onToggle = { store.toggleCompleted(task.id) },
+                        onToggleSubTask = { store.toggleSubTask(it, completeParent = true) },
+                        onExpand = { store.setExpanded(task.id, !task.subTasksExpanded) },
                         onClick = { onOpen(task) },
                     )
                 }
@@ -586,41 +660,117 @@ private fun TaskPage(
 @Composable
 private fun TaskRow(
     task: Task,
+    subTasks: List<SubTask>,
     colors: AppColors,
     strikethrough: Boolean,
     dragging: Boolean,
     handle: Modifier?,
     onToggle: () -> Unit,
+    onToggleSubTask: (String) -> Unit,
+    onExpand: () -> Unit,
     onClick: () -> Unit,
 ) {
+    val now = System.currentTimeMillis()
+    val priorityColor = PRIORITY_COLORS[task.priority]?.let { Color(it) }
     Column(Modifier.background(if (dragging) colors.surface else colors.background)) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).heightIn(min = 56.dp),
+            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).clickable(onClick = onClick),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onToggle, modifier = Modifier.padding(start = 4.dp)) {
+            // Highlight strip down the left edge.
+            Box(Modifier.width(8.dp).fillMaxHeight().background(if (task.highlight) Color(task.highlightColor) else Color.Transparent))
+            IconButton(onClick = onToggle) {
                 Icon(
                     imageVector = if (task.completed) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
                     contentDescription = if (task.completed) "Mark as not done" else "Mark as done",
-                    tint = colors.checkbox,
+                    tint = priorityColor ?: colors.checkbox,
                 )
             }
-            Text(
-                text = task.title,
-                color = if (task.completed) colors.textSecondary else colors.text,
-                fontSize = 17.sp,
-                textDecoration = if (task.completed && strikethrough) TextDecoration.LineThrough else TextDecoration.None,
-                modifier = Modifier.weight(1f).padding(vertical = 10.dp),
-            )
+            Column(Modifier.weight(1f).heightIn(min = 64.dp).padding(vertical = 8.dp), verticalArrangement = Arrangement.Center) {
+                Text(
+                    text = task.title,
+                    color = if (task.completed) colors.textSecondary else colors.text,
+                    fontSize = 17.sp,
+                    textDecoration = if (task.completed && strikethrough) TextDecoration.LineThrough else TextDecoration.None,
+                )
+                val due = task.dueAt
+                if (due != null) {
+                    val overdue = Lists.isOverdue(task, now)
+                    val text = if (task.allDay) formatDate(due) else "${formatDate(due)} ${formatTime(due)}"
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (task.reminderMode != ReminderMode.DONT_REMIND) {
+                            Icon(
+                                Icons.Filled.Notifications,
+                                contentDescription = "Reminder on",
+                                tint = colors.textSecondary,
+                                modifier = Modifier.size(16.dp).padding(end = 2.dp),
+                            )
+                        }
+                        Text(text, color = if (overdue) Color(0xFFEF5350) else colors.textSecondary, fontSize = 13.sp)
+                        if (task.repeat != 0) {
+                            Icon(
+                                Icons.Filled.Repeat,
+                                contentDescription = "Repeats",
+                                tint = colors.textSecondary,
+                                modifier = Modifier.padding(start = 4.dp).size(14.dp),
+                            )
+                        }
+                    }
+                }
+                if (task.notes.isNotBlank()) {
+                    Text(
+                        task.notes,
+                        color = colors.textSecondary,
+                        fontSize = 14.sp,
+                        textDecoration = if (task.completed && strikethrough) TextDecoration.LineThrough else TextDecoration.None,
+                    )
+                }
+                val completedAt = task.completedAt
+                if (task.completed && completedAt != null) {
+                    Text("Completed: ${formatDate(completedAt)} ${formatTime(completedAt)}", color = colors.textSecondary, fontSize = 12.sp)
+                }
+            }
+            if (subTasks.isNotEmpty()) {
+                Row(Modifier.clickable(onClick = onExpand).padding(horizontal = 6.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${subTasks.count { it.completed }}/${subTasks.size}", color = colors.textSecondary, fontSize = 12.sp)
+                    Icon(
+                        if (task.subTasksExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = if (task.subTasksExpanded) "Hide sub tasks" else "Show sub tasks",
+                        tint = colors.textSecondary,
+                    )
+                }
+            }
             if (handle != null) {
-                Box(handle.size(width = 44.dp, height = 56.dp), contentAlignment = Alignment.Center) {
+                Box(handle.width(40.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
                     DragHandle(colors.checkbox)
                 }
             } else {
                 Spacer(Modifier.width(12.dp))
             }
         }
-        HorizontalDivider(Modifier.padding(start = 52.dp), thickness = 1.dp, color = colors.divider)
+        if (task.subTasksExpanded) {
+            subTasks.forEach { st ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { onToggleSubTask(st.id) }.padding(start = 52.dp, end = 12.dp).heightIn(min = 36.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = if (st.completed) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
+                        contentDescription = if (st.completed) "Mark as not done" else "Mark as done",
+                        tint = colors.checkbox,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        st.title,
+                        color = if (st.completed) colors.textSecondary else colors.text,
+                        fontSize = 14.sp,
+                        textDecoration = if (st.completed && strikethrough) TextDecoration.LineThrough else TextDecoration.None,
+                    )
+                }
+            }
+        }
+        HorizontalDivider(Modifier.padding(start = 56.dp), thickness = 0.5.dp, color = colors.divider)
     }
 }
 

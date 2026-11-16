@@ -163,6 +163,37 @@ data class Task(
     }
 }
 
+data class SubTask(
+    override val id: String,
+    override val createdAt: Long,
+    override val updatedAt: Long,
+    override val deletedAt: Long?,
+    override val updatedBy: String,
+    val rank: String,
+    val taskId: String,
+    val title: String,
+    val completed: Boolean = false,
+    val completedAt: Long? = null,
+) : Entity {
+    override fun toMap() = meta() + mapOf(
+        "rank" to rank, "taskId" to taskId, "title" to title, "completed" to completed, "completedAt" to completedAt,
+    )
+
+    companion object {
+        fun fromMap(id: String, m: Map<String, Any?>) = SubTask(
+            id, m.long("createdAt"), m.long("updatedAt"), m.longOrNull("deletedAt"), m.string("updatedBy"),
+            rank = m.string("rank", "V"), taskId = m.string("taskId"), title = m.string("title"),
+            completed = m["completed"] as? Boolean ?: false, completedAt = m.longOrNull("completedAt"),
+        )
+    }
+}
+
+val PRIORITY_COLORS: Map<Int, Long> = mapOf(
+    Priority.HIGH to 0xFFD32F2F, Priority.MEDIUM to 0xFFF57C00, Priority.LOW to 0xFFFEC656,
+)
+
+val HIGHLIGHT_COLORS: List<Long> = listOf(0xFFFEC656) + LIST_COLORS + listOf(0xFFCDDC39)
+
 private fun Entity.meta(): Map<String, Any?> = mapOf(
     "createdAt" to createdAt, "updatedAt" to updatedAt, "deletedAt" to deletedAt, "updatedBy" to updatedBy,
 )

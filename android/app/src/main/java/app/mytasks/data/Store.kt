@@ -4,7 +4,10 @@ import app.mytasks.core.Entity
 import app.mytasks.core.LIST_COLORS
 import app.mytasks.core.Lists
 import app.mytasks.core.Rank
+import app.mytasks.core.Repeat
+import app.mytasks.core.Schedule
 import app.mytasks.core.SubList
+import app.mytasks.core.SubTask
 import app.mytasks.core.Task
 import app.mytasks.core.TaskList
 import app.mytasks.core.isLive
@@ -28,7 +31,8 @@ object Collections {
     const val TASK_LISTS = "taskLists"
     const val SUB_LISTS = "subLists"
     const val TASKS = "tasks"
-    val ALL = listOf(TASK_LISTS, SUB_LISTS, TASKS)
+    const val SUB_TASKS = "subTasks"
+    val ALL = listOf(TASK_LISTS, SUB_LISTS, TASKS, SUB_TASKS)
 }
 
 /**
@@ -47,6 +51,7 @@ class Store(
     private val _lists = MutableStateFlow<List<TaskList>>(emptyList())
     private val _subLists = MutableStateFlow<List<SubList>>(emptyList())
     private val _tasks = MutableStateFlow<List<Task>>(emptyList())
+    private val _subTasks = MutableStateFlow<List<SubTask>>(emptyList())
     private val _ready = MutableStateFlow(false)
 
     /** Live task lists in menu order. */
@@ -55,6 +60,8 @@ class Store(
     val subLists: StateFlow<List<SubList>> = _subLists
     /** Every task, including ones in Deleted Items. */
     val tasks: StateFlow<List<Task>> = _tasks
+    /** Live sub-tasks of every task, ordered. */
+    val subTasks: StateFlow<List<SubTask>> = _subTasks
     /** True once the server has confirmed the contents at least once. */
     val ready: StateFlow<Boolean> = _ready
 
@@ -70,6 +77,8 @@ class Store(
                     _subLists.value = docs.map { SubList.fromMap(it.key, it.value) }.observe().filter { it.isLive }.sortedBy { it.rank }
                 Collections.TASKS ->
                     _tasks.value = docs.map { Task.fromMap(it.key, it.value) }.observe()
+                Collections.SUB_TASKS ->
+                    _subTasks.value = docs.map { SubTask.fromMap(it.key, it.value) }.observe().filter { it.isLive }.sortedBy { it.rank }
             }
             if (fromServer) seen.add(collection)
             if (!_ready.value && seen.containsAll(Collections.ALL)) {
@@ -96,6 +105,7 @@ class Store(
     private fun put(list: TaskList) = backend.put(Collections.TASK_LISTS, list.id, list.toMap())
     private fun put(subList: SubList) = backend.put(Collections.SUB_LISTS, subList.id, subList.toMap())
     private fun put(task: Task) = backend.put(Collections.TASKS, task.id, task.toMap())
+    private fun put(subTask: SubTask) = backend.put(Collections.SUB_TASKS, subTask.id, subTask.toMap())
 
     // ---- Queries ----
 
@@ -124,6 +134,22 @@ class Store(
         put(list.copy(deletedAt = t, updatedAt = t, updatedBy = deviceId))
     }
 
+    /** Reorder Task Lists: [orderedIds] is the new order; only the moved list is written. */
+    fun moveList(listId: String, orderedIds: List<String>) {
+        val byId = _lists.value.associateBy { it.id }
+        val list = byId[listId] ?: return
+        val rank = rankAt(listId, orderedIds) { byId[it]?.rank } ?: return
+        if (rank != list.rank) put(list.copy(rank = rank, updatedAt = stamp(), updatedBy = deviceId))
+    }
+
+    private fun rankAt(id: String, orderedIds: List<String>, rankOf: (String) -> String?): String? {
+        val index = orderedIds.indexOf(id)
+        if (index < 0) return null
+        val before = orderedIds.getOrNull(index - 1)?.let(rankOf)
+        val after = orderedIds.getOrNull(index + 1)?.let(rankOf)
+        return if (before != null && after != null && before >= after) Rank.after(before) else Rank.between(before, after)
+    }
+
     // ---- Sub-lists ----
 
     fun addSubList(listId: String, title: String): SubList {
@@ -141,6 +167,39 @@ class Store(
 
     fun setHideCompleted(sub: SubList, hide: Boolean) =
         put(sub.copy(hideCompleted = hide, updatedAt = stamp(), updatedBy = deviceId))
+
+    /** Reorder Sub Lists: [orderedIds] is the new order; only the moved sub-list is written. */
+    fun moveSubList(subId: String, orderedIds: List<String>) {
+        val byId = _subLists.value.associateBy { it.id }
+        val sub = byId[subId] ?: return
+        val rank = rankAt(subId, orderedIds) { byId[it]?.rank } ?: return
+        if (rank != sub.rank) put(sub.copy(rank = rank, updatedAt = stamp(), updatedBy = deviceId))
+    }
+
+    /** Move Sub List to another task list, with its tasks. False if it is the list's last sub-list. */
+    fun moveSubListTo(sub: SubList, targetListId: String): Boolean {
+        if (sub.listId == targetListId) return true
+        if (subListsOf(sub.listId).size <= 1) return false
+        val rank = Rank.after(subListsOf(targetListId).lastOrNull()?.rank)
+        put(sub.copy(listId = targetListId, rank = rank, updatedAt = stamp(), updatedBy = deviceId))
+        tasksOf(sub.id).forEach { put(it.copy(listId = targetListId, updatedAt = stamp(), updatedBy = deviceId)) }
+        return true
+    }
+
+    /** Duplicate Sub List: a copy with the same tasks and sub-tasks, placed last. */
+    fun duplicateSubList(sub: SubList): SubList {
+        val copy = addSubList(sub.listId, sub.title)
+        for (task in tasksOf(sub.id)) {
+            val t = stamp()
+            val newTask = task.copy(id = newId(), createdAt = t, updatedAt = t, updatedBy = deviceId, subListId = copy.id)
+            put(newTask)
+            for (st in subTasksOf(task.id)) {
+                val t2 = stamp()
+                put(st.copy(id = newId(), createdAt = t2, updatedAt = t2, updatedBy = deviceId, taskId = newTask.id))
+            }
+        }
+        return copy
+    }
 
     /** Returns false, and deletes nothing, if this is the list's last sub-list. */
     fun deleteSubList(sub: SubList): Boolean {
@@ -180,9 +239,128 @@ class Store(
         if (clean.isNotEmpty() && clean != task.title) put(task.copy(title = clean, updatedAt = stamp(), updatedBy = deviceId))
     }
 
+    /**
+     * Ticks or unticks a task. Ticking a repeating task moves it to its next
+     * due date instead and leaves it open, until the repeat has run out.
+     */
     fun setCompleted(task: Task, completed: Boolean) {
         val t = stamp()
-        put(task.copy(completed = completed, completedAt = if (completed) t else null, updatedAt = t, updatedBy = deviceId))
+        val next = if (completed && task.repeat != Repeat.NONE) Schedule.nextDue(task, clock()) else null
+        if (next != null) {
+            put(task.copy(dueAt = next, snoozedUntil = null, updatedAt = t, updatedBy = deviceId))
+            subTasksOf(task.id).filter { it.completed }.forEach {
+                put(it.copy(completed = false, completedAt = null, updatedAt = stamp(), updatedBy = deviceId))
+            }
+        } else {
+            put(task.copy(completed = completed, completedAt = if (completed) t else null, updatedAt = t, updatedBy = deviceId))
+        }
+    }
+
+    /** A new, unsaved task for the task screen. Nothing is stored until [saveTask]. */
+    fun draftTask(sub: SubList): Task {
+        val t = clock()
+        return Task(newId(), t, t, null, deviceId, "V", sub.listId, sub.id, "")
+    }
+
+    /**
+     * Saves the task screen: the task and its sub-tasks. [subTasks] is the full
+     * list in order as (id or null for new, title, completed).
+     */
+    fun saveTask(task: Task, isNew: Boolean, atTop: Boolean, subTasks: List<Triple<String?, String, Boolean>>) {
+        val title = task.title.trim()
+        if (title.isEmpty()) return
+        val stored = current(task.id)
+        val movedSubList = stored != null && stored.subListId != task.subListId
+        val rank = if (isNew || movedSubList) {
+            val peers = ordered(task.subListId)
+            if (atTop) Rank.before(peers.firstOrNull()?.rank) else Rank.after(peers.lastOrNull()?.rank)
+        } else {
+            stored?.rank ?: task.rank
+        }
+        val t = stamp()
+        val completedAt = if (task.completed) (task.completedAt ?: t) else null
+        put(task.copy(title = title, rank = rank, completedAt = completedAt, createdAt = if (isNew) t else task.createdAt, updatedAt = t, updatedBy = deviceId))
+
+        val existing = subTasksOf(task.id).associateBy { it.id }
+        val kept = HashSet<String>()
+        var last: String? = null
+        for ((id, rawTitle, done) in subTasks) {
+            val subTitle = rawTitle.trim()
+            if (subTitle.isEmpty()) continue
+            last = Rank.after(last)
+            val old = id?.let { existing[it] }
+            val ts = stamp()
+            if (old == null) {
+                put(SubTask(newId(), ts, ts, null, deviceId, last, task.id, subTitle, done, if (done) ts else null))
+            } else {
+                kept.add(old.id)
+                val changed = old.title != subTitle || old.completed != done || old.rank != last
+                if (changed) {
+                    put(old.copy(title = subTitle, completed = done, completedAt = if (done) (old.completedAt ?: ts) else null, rank = last, updatedAt = ts, updatedBy = deviceId))
+                }
+            }
+        }
+        for (old in existing.values) {
+            if (old.id !in kept) {
+                val ts = stamp()
+                put(old.copy(deletedAt = ts, updatedAt = ts, updatedBy = deviceId))
+            }
+        }
+    }
+
+    fun subTasksOf(taskId: String): List<SubTask> = _subTasks.value.filter { it.taskId == taskId }
+
+    /** Ticks a sub-task; when every sub-task is done the parent task is completed too. */
+    fun toggleSubTask(subTaskId: String, completeParent: Boolean) {
+        val st = _subTasks.value.firstOrNull { it.id == subTaskId } ?: return
+        val t = stamp()
+        val done = !st.completed
+        put(st.copy(completed = done, completedAt = if (done) t else null, updatedAt = t, updatedBy = deviceId))
+        if (done && completeParent) {
+            val all = subTasksOf(st.taskId)
+            if (all.all { it.completed }) current(st.taskId)?.takeIf { !it.completed }?.let { setCompleted(it, true) }
+        }
+    }
+
+    fun setExpanded(taskId: String, expanded: Boolean) {
+        current(taskId)?.let { put(it.copy(subTasksExpanded = expanded, updatedAt = stamp(), updatedBy = deviceId)) }
+    }
+
+    /** Move task to the top or bottom of its sub-list. */
+    fun moveTaskToEdge(taskId: String, top: Boolean) {
+        val task = current(taskId) ?: return
+        val peers = ordered(task.subListId).filter { it.id != taskId }
+        val rank = if (top) Rank.before(peers.firstOrNull()?.rank) else Rank.after(peers.lastOrNull()?.rank)
+        put(task.copy(rank = rank, updatedAt = stamp(), updatedBy = deviceId))
+    }
+
+    /** Move tasks to another sub-list, keeping their order. */
+    fun moveTasksTo(taskIds: List<String>, target: SubList, atTop: Boolean) {
+        val moving = ordered2(taskIds)
+        var edge = ordered(target.id).let { if (atTop) it.firstOrNull()?.rank else it.lastOrNull()?.rank }
+        for (task in if (atTop) moving.reversed() else moving) {
+            edge = if (atTop) Rank.before(edge) else Rank.after(edge)
+            put(task.copy(listId = target.listId, subListId = target.id, rank = edge, updatedAt = stamp(), updatedBy = deviceId))
+        }
+    }
+
+    private fun ordered2(taskIds: List<String>): List<Task> {
+        val ids = taskIds.toSet()
+        return _tasks.value.filter { it.id in ids && it.isLive }.sortedBy { it.rank }
+    }
+
+    fun duplicateTask(taskId: String) {
+        val task = current(taskId) ?: return
+        val peers = ordered(task.subListId)
+        val index = peers.indexOfFirst { it.id == taskId }
+        val rank = Rank.between(task.rank, peers.getOrNull(index + 1)?.rank)
+        val t = stamp()
+        val copy = task.copy(id = newId(), createdAt = t, updatedAt = t, updatedBy = deviceId, rank = rank)
+        put(copy)
+        for (st in subTasksOf(task.id)) {
+            val t2 = stamp()
+            put(st.copy(id = newId(), createdAt = t2, updatedAt = t2, updatedBy = deviceId, taskId = copy.id))
+        }
     }
 
     private fun current(taskId: String): Task? = _tasks.value.firstOrNull { it.id == taskId }

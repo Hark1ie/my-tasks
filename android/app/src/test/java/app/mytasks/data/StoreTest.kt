@@ -110,6 +110,68 @@ class StoreTest {
     }
 
     @Test
+    fun savingTheTaskScreenStoresTaskAndSubTasks() {
+        val s = store()
+        val sub = s.subLists.value[0]
+        s.addTask(sub, "existing", atTop = true)
+        val draft = s.draftTask(sub).copy(title = "  New one ", notes = "n", priority = 3)
+        s.saveTask(draft, isNew = true, atTop = true, subTasks = listOf(Triple(null, "a", false), Triple(null, " ", false), Triple(null, "b", true)))
+        assertEquals(listOf("New one", "existing"), s.titles(sub.id))
+        val saved = s.tasksOf(sub.id).first { it.title == "New one" }
+        assertEquals(listOf("a", "b"), s.subTasksOf(saved.id).map { it.title })
+
+        val subs = s.subTasksOf(saved.id)
+        s.saveTask(saved.copy(title = "Renamed"), isNew = false, atTop = true, subTasks = listOf(Triple(subs[1].id, "b", true), Triple(null, "c", false)))
+        assertEquals(listOf("Renamed", "existing"), s.titles(sub.id))
+        assertEquals(listOf("b", "c"), s.subTasksOf(saved.id).map { it.title })
+    }
+
+    @Test
+    fun completingEverySubTaskCompletesTheTask() {
+        val s = store()
+        val sub = s.subLists.value[0]
+        val draft = s.draftTask(sub).copy(title = "parent")
+        s.saveTask(draft, isNew = true, atTop = true, subTasks = listOf(Triple(null, "a", false), Triple(null, "b", false)))
+        val parent = s.tasksOf(sub.id)[0]
+        s.subTasksOf(parent.id).forEach { s.toggleSubTask(it.id, completeParent = true) }
+        assertTrue(s.tasksOf(sub.id)[0].completed)
+    }
+
+    @Test
+    fun tickingARepeatingTaskMovesItToTheNextDate() {
+        val s = store()
+        val sub = s.subLists.value[0]
+        val day = 24L * 60 * 60 * 1000
+        now = 100 * day + 1000
+        val draft = s.draftTask(sub).copy(title = "daily", dueAt = 100 * day, repeat = 1)
+        s.saveTask(draft, isNew = true, atTop = true, subTasks = emptyList())
+        s.toggleCompleted(s.tasksOf(sub.id)[0].id)
+        val after = s.tasksOf(sub.id)[0]
+        assertFalse(after.completed)
+        assertEquals(101 * day, after.dueAt)
+    }
+
+    @Test
+    fun reorderingListsAndMovingSubLists() {
+        val s = store()
+        val first = s.lists.value[0]
+        val second = s.addList("Second", 0xFFFF9800)
+        val third = s.addList("Third", 0xFFFF9800)
+        s.moveList(third.id, listOf(third.id, first.id, second.id))
+        assertEquals(listOf("Third", "To do", "Second"), s.lists.value.map { it.title })
+
+        val extra = s.addSubList(first.id, "Extra")
+        s.addTask(extra, "t", atTop = true)
+        assertTrue(s.moveSubListTo(extra, second.id))
+        assertEquals(listOf(Store.DEFAULT_SUB_LIST_TITLE, "Extra"), s.subListsOf(second.id).map { it.title })
+        assertEquals(second.id, s.tasksOf(extra.id)[0].listId)
+        assertFalse(s.moveSubListTo(s.subListsOf(first.id)[0], second.id))
+
+        val copy = s.duplicateSubList(s.subListsOf(second.id)[1])
+        assertEquals(listOf("t"), s.titles(copy.id))
+    }
+
+    @Test
     fun editTimesAlwaysMoveForward() {
         val s = store()
         val sub = s.subLists.value[0]

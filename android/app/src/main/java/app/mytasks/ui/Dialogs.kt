@@ -15,6 +15,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -43,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mytasks.core.LIST_COLORS
 import app.mytasks.core.TaskList
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
 private fun DialogButton(label: String, onClick: () -> Unit) {
@@ -185,13 +193,55 @@ fun ChoiceDialog(title: String, options: List<String>, selected: Int, onDismiss:
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 options.forEachIndexed { index, label ->
                     RadioRow(label, index == selected) {
-                        onPick(index)
                         onDismiss()
+                        onPick(index)
                     }
                 }
             }
         },
         confirmButton = { DialogButton("CANCEL", onDismiss) },
+    )
+}
+
+/** Drag rows by their handle to reorder. [onMove] gets the moved id and the new order. */
+@Composable
+fun ReorderDialog(title: String, items: List<Pair<String, String>>, onDismiss: () -> Unit, onMove: (String, List<String>) -> Unit) {
+    val colors = appColors()
+    var order by remember(items) { mutableStateOf(items) }
+    val listState = rememberLazyListState()
+    val reorderState = rememberReorderableLazyListState(listState) { from, to ->
+        order = order.toMutableList().apply { add(to.index, removeAt(from.index)) }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            LazyColumn(state = listState, modifier = Modifier.heightIn(max = 420.dp)) {
+                items(order, key = { it.first }) { item ->
+                    ReorderableItem(reorderState, key = item.first) { dragging ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(if (dragging) colors.surface else Color.Transparent)
+                                .heightIn(min = 48.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(item.second, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                            Icon(
+                                Icons.Filled.DragHandle,
+                                contentDescription = "Drag to reorder",
+                                tint = colors.textSecondary,
+                                modifier = Modifier
+                                    .draggableHandle(onDragStopped = { onMove(item.first, order.map { it.first }) })
+                                    .size(40.dp)
+                                    .padding(8.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { DialogButton("CLOSE", onDismiss) },
     )
 }
 
