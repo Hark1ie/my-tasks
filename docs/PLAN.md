@@ -45,8 +45,8 @@ A personal to-do app for Android, Windows and the web, with real-time sync and a
 ## Milestones
 
 1. Data model, Firebase project, security rules, shared sync logic with tests. **Done.**
-2. Android main screen. **Build 5 (16 Nov 2026), waiting for the owner's test on the phone.** Working: Google sign-in, synced lists, sub-list tabs, add/edit/complete tasks, quick add with line splitting, drag reorder, swipe to delete with undo, list menu (sort, complete all, uncheck, hide/remove completed, delete all), share list, themes. Still to do from this milestone: reorder task lists and sub-lists, move and duplicate sub-list, select multiple, search. New task and edit task are simple title dialogs until milestone 3.
-3. Task detail, reminders, alarms, repeat, notifications, quick tile, shortcut.
+2. Android main screen. **Build 7 (16 Nov 2026), waiting for the owner's test on the phone.** Working: Google sign-in, synced lists, sub-list tabs, add/complete tasks, quick add with line splitting, drag reorder, swipe to delete with undo, list menu (sort, complete all, uncheck, hide/remove completed, delete all), reorder task lists and sub-lists, move and duplicate sub-list, share list, themes. Still to do: Select Multiple (with the task actions: move to top/bottom, move, duplicate, share, highlight, delete) and search.
+3. Task detail, reminders, alarms, repeat. **Part 1 in build 7:** task screen with title, notes, sub-tasks, list, due date and time, all day, reminder choice, reminder type, repeat (all kinds), repeat from, repeat until, priority, highlight, completed, created, SAVE & ADD, save-changes prompt; ticking a repeating task moves it to its next date. **Still to do:** the reminders themselves (notifications, alarms, snooze, MARK AS DONE/SNOOZE/DISMISS, reboot and time-zone rescheduling, battery helper), quick settings tile, app shortcut, attachment, add to calendar.
 4. Settings screen.
 5. Android widgets (List, Large, Calendar).
 6. Desktop and web app.
@@ -62,3 +62,5 @@ A personal to-do app for Android, Windows and the web, with real-time sync and a
 - Percentage heading format.
 - Names of the first list and sub-list on a fresh install (currently "To do" and "Sub List 1").
 - Swipe-to-delete background and icons.
+- Task screen: colour of the title area, where SAVE & ADD sits, wording of the save-changes prompt, date and time picker style (the reference uses a different picker library), date format.
+- Task row: how priority is shown (currently the circle is tinted), how a repeating task's sub-tasks behave when it rolls over (currently unticked).
