@@ -8,6 +8,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 /** Theme options, in the order of the Theme setting. */
 enum class ThemeChoice { Light, Dark, Black, SystemLightDark, SystemLightBlack }
@@ -62,7 +64,7 @@ private val LocalAppColors = staticCompositionLocalOf { BlackColors }
 fun appColors(): AppColors = LocalAppColors.current
 
 @Composable
-fun AppTheme(choice: ThemeChoice, content: @Composable () -> Unit) {
+fun AppTheme(choice: ThemeChoice, fontScale: Float = 1f, content: @Composable () -> Unit) {
     val systemDark = isSystemInDarkTheme()
     val colors = when (choice) {
         ThemeChoice.Light -> LightColors
@@ -96,7 +98,9 @@ fun AppTheme(choice: ThemeChoice, content: @Composable () -> Unit) {
             outline = colors.outline,
         )
     }
-    CompositionLocalProvider(LocalAppColors provides colors) {
+    val density = LocalDensity.current
+    val scaled = Density(density.density, density.fontScale * fontScale)
+    CompositionLocalProvider(LocalAppColors provides colors, LocalDensity provides scaled) {
         MaterialTheme(colorScheme = scheme, content = content)
     }
 }

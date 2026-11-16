@@ -32,7 +32,8 @@ object Collections {
     const val SUB_LISTS = "subLists"
     const val TASKS = "tasks"
     const val SUB_TASKS = "subTasks"
-    val ALL = listOf(TASK_LISTS, SUB_LISTS, TASKS, SUB_TASKS)
+    const val SETTINGS = "settings"
+    val ALL = listOf(TASK_LISTS, SUB_LISTS, TASKS, SUB_TASKS, SETTINGS)
 }
 
 /**
@@ -65,6 +66,9 @@ class Store(
     /** True once the server has confirmed the contents at least once. */
     val ready: StateFlow<Boolean> = _ready
 
+    /** Called when the synced settings document arrives or changes. */
+    var onSettings: ((Map<String, Any?>) -> Unit)? = null
+
     private val seen = HashSet<String>()
     private var lastStamp = 0L
 
@@ -79,6 +83,7 @@ class Store(
                     _tasks.value = docs.map { Task.fromMap(it.key, it.value) }.observe()
                 Collections.SUB_TASKS ->
                     _subTasks.value = docs.map { SubTask.fromMap(it.key, it.value) }.observe().filter { it.isLive }.sortedBy { it.rank }
+                Collections.SETTINGS -> docs[SETTINGS_DOC]?.let { onSettings?.invoke(it) }
             }
             if (fromServer) seen.add(collection)
             if (!_ready.value && seen.containsAll(Collections.ALL)) {
@@ -106,6 +111,11 @@ class Store(
     private fun put(subList: SubList) = backend.put(Collections.SUB_LISTS, subList.id, subList.toMap())
     private fun put(task: Task) = backend.put(Collections.TASKS, task.id, task.toMap())
     private fun put(subTask: SubTask) = backend.put(Collections.SUB_TASKS, subTask.id, subTask.toMap())
+
+    /** Writes the synced settings. Device-only settings never come through here. */
+    fun putSettings(values: Map<String, Any>) {
+        backend.put(Collections.SETTINGS, SETTINGS_DOC, values + mapOf("updatedAt" to stamp(), "updatedBy" to deviceId))
+    }
 
     // ---- Queries ----
 
@@ -243,10 +253,17 @@ class Store(
      * Ticks or unticks a task. Ticking a repeating task moves it to its next
      * due date instead and leaves it open, until the repeat has run out.
      */
-    fun setCompleted(task: Task, completed: Boolean) {
+    fun setCompleted(task: Task, completed: Boolean, keepHistory: Boolean = false) {
         val t = stamp()
         val next = if (completed && task.repeat != Repeat.NONE) Schedule.nextDue(task, clock()) else null
         if (next != null) {
+            if (keepHistory) {
+                // "Save recurring task history": leave a completed copy behind.
+                val peers = ordered(task.subListId)
+                val after = peers.getOrNull(peers.indexOfFirst { it.id == task.id } + 1)?.rank
+                put(task.copy(id = newId(), createdAt = t, updatedAt = t, updatedBy = deviceId, completed = true, completedAt = t,
+                    repeat = Repeat.NONE, reminderMode = 0, rank = Rank.between(task.rank, after)))
+            }
             put(task.copy(dueAt = next, snoozedUntil = null, updatedAt = t, updatedBy = deviceId))
             subTasksOf(task.id).filter { it.completed }.forEach {
                 put(it.copy(completed = false, completedAt = null, updatedAt = stamp(), updatedBy = deviceId))
@@ -366,8 +383,8 @@ class Store(
     private fun current(taskId: String): Task? = _tasks.value.firstOrNull { it.id == taskId }
 
     /** Ticks or unticks the task as it is stored now. */
-    fun toggleCompleted(taskId: String) {
-        current(taskId)?.let { setCompleted(it, !it.completed) }
+    fun toggleCompleted(taskId: String, keepHistory: Boolean = false) {
+        current(taskId)?.let { setCompleted(it, !it.completed, keepHistory) }
     }
 
     fun deleteTask(taskId: String) {
@@ -421,6 +438,7 @@ class Store(
 
     companion object {
         const val DEFAULT_SUB_LIST_TITLE = "Sub List 1"
+        const val SETTINGS_DOC = "synced"
     }
 }
 

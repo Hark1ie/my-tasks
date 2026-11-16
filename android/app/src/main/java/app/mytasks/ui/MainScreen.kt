@@ -111,7 +111,25 @@ import app.mytasks.core.ReminderMode
 import app.mytasks.core.Task
 import app.mytasks.core.TaskList
 import app.mytasks.core.isLive
+import app.mytasks.data.Keys
 import app.mytasks.data.Prefs
+import app.mytasks.data.SettingsState
+import app.mytasks.core.Schedule
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import app.mytasks.data.Store
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
@@ -129,7 +147,6 @@ private sealed interface Dialog {
     data class MoveSubList(val sub: SubList) : Dialog
     data class Split(val text: String, val lines: List<String>) : Dialog
     data object Sort : Dialog
-    data object Settings : Dialog
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,11 +160,13 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
     val allTasks by store.tasks.collectAsStateWithLifecycle()
     val allSubTasks by store.subTasks.collectAsStateWithLifecycle()
     val ready by store.ready.collectAsStateWithLifecycle()
-    val theme by prefs.theme.collectAsStateWithLifecycle()
+    val st by prefs.state.collectAsStateWithLifecycle()
+    val atTop = st[Keys.insertNewTasks] == 0
 
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerState = rememberDrawerState(if (st[Keys.showMenuOnOpen]) DrawerValue.Open else DrawerValue.Closed)
     val snackbar = remember { SnackbarHostState() }
-    var listId by rememberSaveable { mutableStateOf(prefs.lastListId) }
+    var listId by rememberSaveable { mutableStateOf(st[Keys.defaultList].ifEmpty { prefs.lastListId }) }
+    var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<Dialog?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     // The task open in the task screen, and whether it is a new, unsaved one.
@@ -188,26 +207,45 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
     }
 
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
+    // "Show main menu when back pressed"
+    BackHandler(enabled = drawerState.isClosed && st[Keys.showMenuOnBack] && editing == null && !settingsOpen) {
+        scope.launch { drawerState.open() }
+    }
+
+    /** A new task with the defaults from Task Settings. */
+    fun newDraft(target: SubList): Task {
+        var draft = store.draftTask(target).copy(
+            priority = st[Keys.defaultPriority],
+            reminderType = st[Keys.defaultReminderType],
+            subTasksExpanded = st[Keys.subTasksExpandDefault],
+        )
+        if (st[Keys.enableReminders]) {
+            val due = java.util.Calendar.getInstance().apply {
+                add(java.util.Calendar.HOUR_OF_DAY, 1)
+                set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            draft = draft.copy(dueAt = due, reminderMode = ReminderMode.WHEN_DUE)
+        }
+        return draft
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet(drawerContainerColor = colors.background, drawerContentColor = colors.text) {
+            // Same width rule as the reference app's menu: screen width minus 56dp, at most 280dp.
+            val drawerWidth = minOf(LocalConfiguration.current.screenWidthDp - 56, 280).dp
+            ModalDrawerSheet(
+                modifier = Modifier.width(drawerWidth),
+                drawerContainerColor = colors.background,
+                drawerContentColor = colors.text,
+                drawerShape = RectangleShape,
+            ) {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text(
-                        "My Tasks",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(start = 20.dp, top = 20.dp, end = 20.dp),
-                    )
-                    Text(
-                        account ?: "Sync is not set up in this build. Nothing is saved.",
-                        color = colors.textSecondary,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(start = 20.dp, top = 2.dp, end = 20.dp, bottom = 12.dp),
-                    )
+                    Box(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
+                        Text("My Tasks", fontSize = 18.sp)
+                    }
                     lists.forEach { item ->
-                        val info = Lists.headingInfo(liveTasks.filter { it.listId == item.id }, prefs.menuListInfo, now)
+                        val info = Lists.headingInfo(liveTasks.filter { it.listId == item.id }, st[Keys.menuListInfo], now)
                         DrawerRow(
                             title = item.title,
                             trailing = info,
@@ -218,27 +256,27 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                         )
                     }
                     HorizontalDivider(color = colors.divider, modifier = Modifier.padding(vertical = 8.dp))
-                    DrawerRow("New List", colors = colors) {
+                    DrawerRow("New List", icon = Icons.AutoMirrored.Filled.PlaylistAdd, colors = colors) {
                         scope.launch { drawerState.close() }
                         dialog = Dialog.NewList
                     }
-                    DrawerRow("New Filtered List", colors = colors) { later() }
-                    DrawerRow("Reorder Task Lists", colors = colors) {
+                    DrawerRow("New Filtered List", icon = Icons.Filled.FilterList, colors = colors) { later() }
+                    DrawerRow("Reorder Task Lists", icon = Icons.Filled.SwapVert, colors = colors) {
                         scope.launch { drawerState.close() }
                         dialog = Dialog.ReorderLists
                     }
-                    DrawerRow("Edit List", colors = colors) {
+                    DrawerRow("Edit List", icon = Icons.Filled.Edit, colors = colors) {
                         scope.launch { drawerState.close() }
                         list?.let { dialog = Dialog.EditList(it) }
                     }
                     HorizontalDivider(color = colors.divider, modifier = Modifier.padding(vertical = 8.dp))
-                    DrawerRow("Tags", colors = colors) { later() }
-                    DrawerRow("Deleted Items", colors = colors) { later() }
+                    DrawerRow("Tags", icon = Icons.AutoMirrored.Filled.Label, colors = colors) { later() }
+                    DrawerRow("Deleted Items", icon = Icons.Filled.Delete, colors = colors) { later() }
                     HorizontalDivider(color = colors.divider, modifier = Modifier.padding(vertical = 8.dp))
-                    DrawerRow("Help", colors = colors) { later() }
-                    DrawerRow("Settings", colors = colors) {
+                    DrawerRow("Help", icon = Icons.AutoMirrored.Filled.HelpOutline, colors = colors) { later() }
+                    DrawerRow("Settings", icon = Icons.Filled.Settings, colors = colors) {
                         scope.launch { drawerState.close() }
-                        dialog = Dialog.Settings
+                        settingsOpen = true
                     }
                     Spacer(Modifier.height(24.dp))
                 }
@@ -250,6 +288,7 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
                 TopAppBar(
+                    expandedHeight = 56.dp,
                     title = {
                         Text(list?.title ?: "", fontWeight = FontWeight.Medium, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     },
@@ -264,7 +303,7 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                             if (list != null && sub != null) {
                                 val send = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, store.shareText(list, sub, prefs.moveCompletedToBottom))
+                                    putExtra(Intent.EXTRA_TEXT, store.shareText(list, sub, st[Keys.moveCompletedToBottom]))
                                 }
                                 context.startActivity(Intent.createChooser(send, "Share List"))
                             }
@@ -313,7 +352,7 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
             floatingActionButton = {
                 if (sub != null) {
                     FloatingActionButton(
-                        onClick = { editing = store.draftTask(sub) to true },
+                        onClick = { editing = newDraft(sub) to true },
                         shape = CircleShape,
                         containerColor = colors.accent,
                         contentColor = Color.Black,
@@ -321,13 +360,13 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                 }
             },
             bottomBar = {
-                if (prefs.showQuickAdd && sub != null) {
-                    QuickAddBar(colors) { text ->
+                if (st[Keys.showQuickAdd] && sub != null) {
+                    QuickAddBar(colors, multiLine = st[Keys.multiLineQuickAdd]) { text ->
                         val lines = Lists.splitQuickAdd(text)
                         when {
                             lines.isEmpty() -> Unit
                             lines.size > 1 -> dialog = Dialog.Split(text, lines)
-                            else -> store.addTask(sub, lines[0], prefs.insertNewTasksAtTop)
+                            else -> store.addTask(sub, lines[0], atTop)
                         }
                     }
                 }
@@ -341,7 +380,7 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                 } else {
                     SubListTabs(
                         titles = subs.map { s ->
-                            Lists.headingTitle(s.title, liveTasks.filter { it.subListId == s.id }, prefs.subListHeading, now)
+                            Lists.headingTitle(s.title, liveTasks.filter { it.subListId == s.id }, st[Keys.subListHeading], now)
                         },
                         selected = pagerState.currentPage,
                         colors = colors,
@@ -362,7 +401,7 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                                 sub = pageSub,
                                 tasks = liveTasks.filter { it.subListId == pageSub.id },
                                 subTasks = subTasksByTask,
-                                prefs = prefs,
+                                st = st,
                                 store = store,
                                 onDeleted = { id -> deleted("Task deleted", listOf(id)) },
                                 onOpen = { editing = it to false },
@@ -379,7 +418,18 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
         is Dialog.NewList -> ListDialog("New List", null, onDismiss = { dialog = null }) { title, color ->
             openList(store.addList(title, color).id)
         }
-        is Dialog.EditList -> ListDialog("Edit List", d.list, onDismiss = { dialog = null }, onDelete = { dialog = Dialog.DeleteList(d.list) }) { title, color ->
+        is Dialog.EditList -> ListDialog("Edit List", d.list, onDismiss = { dialog = null }, onDelete = {
+            if (st[Keys.deleteListConfirmation]) {
+                dialog = Dialog.DeleteList(d.list)
+            } else if (lists.size > 1) {
+                dialog = null
+                store.deleteList(d.list)
+                message("Task list deleted")
+            } else {
+                dialog = null
+                message("This is your only list.")
+            }
+        }) { title, color ->
             store.editList(d.list, title, color)
         }
         is Dialog.DeleteList -> ConfirmDialog(
@@ -426,9 +476,9 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
             confirm = "YES",
             dismiss = "NO",
             onDismiss = { dialog = null },
-            onDismissButton = { sub?.let { store.addTask(it, d.text, prefs.insertNewTasksAtTop) } },
+            onDismissButton = { sub?.let { store.addTask(it, d.text, atTop) } },
         ) {
-            sub?.let { store.addTasks(it, d.lines, prefs.insertNewTasksAtTop) }
+            sub?.let { store.addTasks(it, d.lines, atTop) }
         }
         is Dialog.Sort -> ChoiceDialog(
             title = "Sort",
@@ -436,13 +486,6 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
             selected = SORT_OPTIONS.indexOfFirst { it.first == (sub?.sortOrder ?: SortOrder.USER_DRAGGABLE) },
             onDismiss = { dialog = null },
         ) { index -> sub?.let { store.setSort(it, SORT_OPTIONS[index].first) } }
-        is Dialog.Settings -> SettingsDialog(
-            theme = theme,
-            account = account,
-            onTheme = { prefs.setTheme(it) },
-            onSignOut = onSignOut,
-            onDismiss = { dialog = null },
-        )
     }
     editing?.let { (draft, isNew) ->
         key(draft.id) {
@@ -450,12 +493,13 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                 initial = draft,
                 initialSubTasks = if (isNew) emptyList() else subTasksByTask[draft.id].orEmpty(),
                 isNew = isNew,
+                settings = st,
                 lists = lists,
                 subLists = allSubLists,
                 onSave = { task, subDrafts, addAnother ->
-                    store.saveTask(task, isNew, prefs.insertNewTasksAtTop, subDrafts.map { Triple(it.id, it.title, it.completed) })
+                    store.saveTask(task, isNew, atTop, subDrafts.map { Triple(it.id, it.title, it.completed) })
                     val target = allSubLists.firstOrNull { it.id == task.subListId }
-                    editing = if (addAnother && target != null) store.draftTask(target) to true else null
+                    editing = if (addAnother && target != null) newDraft(target) to true else null
                 },
                 onDelete = {
                     store.deleteTask(draft.id)
@@ -466,6 +510,9 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
                 onClose = { editing = null },
             )
         }
+    }
+    if (settingsOpen) {
+        SettingsScreen(prefs = prefs, lists = lists, account = account, onSignOut = onSignOut, onClose = { settingsOpen = false })
     }
 }
 
@@ -513,6 +560,7 @@ private fun DrawerRow(
     trailing: String = "",
     selected: Boolean = false,
     dot: Color? = null,
+    icon: ImageVector? = null,
     colors: AppColors,
     onClick: () -> Unit,
 ) {
@@ -521,15 +569,21 @@ private fun DrawerRow(
             .fillMaxWidth()
             .background(if (selected) colors.surface else Color.Transparent)
             .clickable(onClick = onClick)
-            .heightIn(min = 48.dp)
-            .padding(horizontal = 20.dp),
+            .height(48.dp)
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (dot != null) {
-            Box(Modifier.size(12.dp).background(dot, CircleShape))
-            Spacer(Modifier.width(16.dp))
+        when {
+            dot != null -> {
+                Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { Box(Modifier.size(20.dp).background(dot, CircleShape)) }
+                Spacer(Modifier.width(32.dp))
+            }
+            icon != null -> {
+                Icon(icon, contentDescription = null, tint = colors.checkbox, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(32.dp))
+            }
         }
-        Text(title, color = colors.text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(title, color = colors.text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         if (trailing.isNotEmpty()) Text(trailing, color = colors.textSecondary, fontSize = 13.sp)
     }
 }
@@ -586,15 +640,18 @@ private fun TaskPage(
     sub: SubList,
     tasks: List<Task>,
     subTasks: Map<String, List<SubTask>>,
-    prefs: Prefs,
+    st: SettingsState,
     store: Store,
     onDeleted: (String) -> Unit,
     onOpen: (Task) -> Unit,
 ) {
     val colors = appColors()
-    val visible = remember(tasks, sub.sortOrder, sub.hideCompleted) {
-        Lists.visibleTasks(tasks, sub.sortOrder, prefs.moveCompletedToBottom, sub.hideCompleted)
+    val moveCompleted = st[Keys.moveCompletedToBottom]
+    val visible = remember(tasks, sub.sortOrder, sub.hideCompleted, moveCompleted) {
+        Lists.visibleTasks(tasks, sub.sortOrder, moveCompleted, sub.hideCompleted)
     }
+    val haptics = LocalHapticFeedback.current
+    val buzz = { if (st[Keys.vibrateUi]) haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
     // The order on screen follows the finger while dragging, then the stored order.
     var order by remember(visible) { mutableStateOf(visible) }
     val listState = rememberLazyListState()
@@ -604,10 +661,10 @@ private fun TaskPage(
     }
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
-        items(order, key = { it.id }) { task ->
+        itemsIndexed(order, key = { _, it -> it.id }) { index, task ->
             ReorderableItem(reorderState, key = task.id) { dragging ->
                 val handle = if (canDrag) {
-                    Modifier.draggableHandle(onDragStopped = { store.moveTask(task.id, order.map { it.id }) })
+                    Modifier.draggableHandle(onDragStarted = { buzz() }, onDragStopped = { store.moveTask(task.id, order.map { it.id }) })
                 } else {
                     null
                 }
@@ -627,7 +684,7 @@ private fun TaskPage(
                 )
                 SwipeToDismissBox(
                     state = swipe,
-                    gesturesEnabled = prefs.swipeToDelete && !dragging,
+                    gesturesEnabled = st[Keys.swipeToDelete] && !dragging,
                     backgroundContent = {
                         Row(
                             Modifier.fillMaxSize().background(colors.surface).padding(horizontal = 20.dp),
@@ -643,11 +700,15 @@ private fun TaskPage(
                         task = task,
                         subTasks = subTasks[task.id].orEmpty(),
                         colors = colors,
-                        strikethrough = prefs.strikethroughCompleted,
+                        st = st,
+                        number = if (st[Keys.autoNumberTasks]) index + 1 else null,
                         dragging = dragging,
                         handle = handle,
-                        onToggle = { store.toggleCompleted(task.id) },
-                        onToggleSubTask = { store.toggleSubTask(it, completeParent = true) },
+                        onToggle = {
+                            buzz()
+                            store.toggleCompleted(task.id, keepHistory = st[Keys.saveRecurringHistory])
+                        },
+                        onToggleSubTask = { store.toggleSubTask(it, completeParent = st[Keys.subTasksCompleteTask]) },
                         onExpand = { store.setExpanded(task.id, !task.subTasksExpanded) },
                         onClick = { onOpen(task) },
                     )
@@ -662,7 +723,8 @@ private fun TaskRow(
     task: Task,
     subTasks: List<SubTask>,
     colors: AppColors,
-    strikethrough: Boolean,
+    st: SettingsState,
+    number: Int?,
     dragging: Boolean,
     handle: Modifier?,
     onToggle: () -> Unit,
@@ -672,6 +734,11 @@ private fun TaskRow(
 ) {
     val now = System.currentTimeMillis()
     val priorityColor = PRIORITY_COLORS[task.priority]?.let { Color(it) }
+    val strikethrough = st[Keys.strikethroughCompleted]
+    // Display mode: Comfortable, Cozy, Compact. "List item padding" is in pixels.
+    val minHeight = listOf(64.dp, 56.dp, 48.dp).getOrElse(st[Keys.displayMode]) { 64.dp }
+    val extraPadding = with(LocalDensity.current) { st[Keys.taskPadding].toDp() }
+    val notesLines = listOf(Int.MAX_VALUE, 2, 1, 0).getOrElse(st[Keys.notesView]) { Int.MAX_VALUE }
     Column(Modifier.background(if (dragging) colors.surface else colors.background)) {
         Row(
             modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).clickable(onClick = onClick),
@@ -686,18 +753,23 @@ private fun TaskRow(
                     tint = priorityColor ?: colors.checkbox,
                 )
             }
-            Column(Modifier.weight(1f).heightIn(min = 64.dp).padding(vertical = 8.dp), verticalArrangement = Arrangement.Center) {
+            Column(Modifier.weight(1f).heightIn(min = minHeight).padding(vertical = extraPadding / 2), verticalArrangement = Arrangement.Center) {
                 Text(
-                    text = task.title,
+                    text = if (number != null) "$number. ${task.title}" else task.title,
                     color = if (task.completed) colors.textSecondary else colors.text,
-                    fontSize = 17.sp,
+                    fontSize = 18.sp,
                     textDecoration = if (task.completed && strikethrough) TextDecoration.LineThrough else TextDecoration.None,
                 )
                 val due = task.dueAt
-                if (due != null) {
+                if (due != null && st[Keys.reminderView] != 2) {
                     val overdue = Lists.isOverdue(task, now)
-                    val text = if (task.allDay) formatDate(due) else "${formatDate(due)} ${formatTime(due)}"
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    val shown = if (st[Keys.includeReminderAdvance]) Schedule.reminderAt(task) ?: due else due
+                    val text = if (task.allDay) formatDate(shown) else "${formatDate(shown)} ${formatTime(shown)}"
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = if (st[Keys.reminderView] == 1) Arrangement.End else Arrangement.Start,
+                    ) {
                         if (task.reminderMode != ReminderMode.DONT_REMIND) {
                             Icon(
                                 Icons.Filled.Notifications,
@@ -717,16 +789,18 @@ private fun TaskRow(
                         }
                     }
                 }
-                if (task.notes.isNotBlank()) {
+                if (task.notes.isNotBlank() && notesLines > 0) {
                     Text(
                         task.notes,
                         color = colors.textSecondary,
                         fontSize = 14.sp,
+                        maxLines = notesLines,
+                        overflow = TextOverflow.Ellipsis,
                         textDecoration = if (task.completed && strikethrough) TextDecoration.LineThrough else TextDecoration.None,
                     )
                 }
                 val completedAt = task.completedAt
-                if (task.completed && completedAt != null) {
+                if (task.completed && completedAt != null && st[Keys.showCompleteDate]) {
                     Text("Completed: ${formatDate(completedAt)} ${formatTime(completedAt)}", color = colors.textSecondary, fontSize = 12.sp)
                 }
             }
@@ -749,28 +823,28 @@ private fun TaskRow(
             }
         }
         if (task.subTasksExpanded) {
-            subTasks.forEach { st ->
+            subTasks.forEachIndexed { subIndex, sub ->
                 Row(
-                    Modifier.fillMaxWidth().clickable { onToggleSubTask(st.id) }.padding(start = 52.dp, end = 12.dp).heightIn(min = 36.dp),
+                    Modifier.fillMaxWidth().clickable { onToggleSubTask(sub.id) }.padding(start = 52.dp, end = 12.dp).heightIn(min = 36.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        imageVector = if (st.completed) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
-                        contentDescription = if (st.completed) "Mark as not done" else "Mark as done",
+                        imageVector = if (sub.completed) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
+                        contentDescription = if (sub.completed) "Mark as not done" else "Mark as done",
                         tint = colors.checkbox,
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        st.title,
-                        color = if (st.completed) colors.textSecondary else colors.text,
+                        if (st[Keys.autoNumberSubTasks]) "${subIndex + 1}. ${sub.title}" else sub.title,
+                        color = if (sub.completed) colors.textSecondary else colors.text,
                         fontSize = 14.sp,
-                        textDecoration = if (st.completed && strikethrough) TextDecoration.LineThrough else TextDecoration.None,
+                        textDecoration = if (sub.completed && strikethrough) TextDecoration.LineThrough else TextDecoration.None,
                     )
                 }
             }
         }
-        HorizontalDivider(Modifier.padding(start = 56.dp), thickness = 0.5.dp, color = colors.divider)
+        HorizontalDivider(Modifier.padding(start = 48.dp, end = 12.dp), thickness = 0.5.dp, color = colors.divider)
     }
 }
 
@@ -789,7 +863,7 @@ private fun DragHandle(color: Color) {
 }
 
 @Composable
-private fun QuickAddBar(colors: AppColors, onAdd: (String) -> Unit) {
+private fun QuickAddBar(colors: AppColors, multiLine: Boolean, onAdd: (String) -> Unit) {
     var text by remember { mutableStateOf("") }
     fun submit() {
         if (text.isNotBlank()) onAdd(text)
@@ -805,22 +879,26 @@ private fun QuickAddBar(colors: AppColors, onAdd: (String) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Surface(
-            modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-            shape = RoundedCornerShape(22.dp),
+            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+            shape = RoundedCornerShape(24.dp),
             color = Color.Transparent,
             border = BorderStroke(1.dp, colors.outline),
         ) {
             Box(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), contentAlignment = Alignment.CenterStart) {
-                if (text.isEmpty()) Text("Quick add task…", color = colors.textSecondary, fontSize = 16.sp)
+                if (text.isEmpty()) Text("Quick add task…", color = colors.textSecondary, fontSize = 18.sp)
                 // Multi line quick add is on by default: Enter adds a line, the arrow adds the task.
                 BasicTextField(
                     value = text,
                     onValueChange = { text = it },
-                    textStyle = TextStyle(color = colors.text, fontSize = 16.sp),
+                    textStyle = TextStyle(color = colors.text, fontSize = 18.sp),
                     cursorBrush = SolidColor(colors.accent),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                    keyboardActions = KeyboardActions(onSend = { submit() }),
-                    maxLines = 4,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = if (multiLine) ImeAction.Default else ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
+                    singleLine = !multiLine,
+                    maxLines = if (multiLine) 3 else 1,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

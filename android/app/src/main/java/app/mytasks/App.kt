@@ -52,10 +52,13 @@ class App : Application() {
             val user = auth.currentUser
             store?.stop()
             store = null
+            prefs.onSyncedChange = null
             _session.value = if (user == null) {
                 Session.SignedOut
             } else {
                 val s = Store(FirestoreBackend(FirebaseFirestore.getInstance(), user.uid), prefs.deviceId)
+                s.onSettings = { prefs.applyCloud(it) }
+                prefs.onSyncedChange = { s.putSettings(it) }
                 s.start()
                 store = s
                 Session.SignedIn(s, user.email)

@@ -88,6 +88,8 @@ import app.mytasks.core.SubTask
 import app.mytasks.core.Task
 import app.mytasks.core.TaskList
 import app.mytasks.core.TimeUnit
+import app.mytasks.data.Keys
+import app.mytasks.data.SettingsState
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -155,6 +157,7 @@ fun TaskScreen(
     initial: Task,
     initialSubTasks: List<SubTask>,
     isNew: Boolean,
+    settings: SettingsState,
     lists: List<TaskList>,
     subLists: List<SubList>,
     onSave: (Task, List<SubDraft>, addAnother: Boolean) -> Unit,
@@ -263,7 +266,7 @@ fun TaskScreen(
     ) { inner ->
         Column(Modifier.padding(inner).fillMaxSize().verticalScroll(rememberScrollState()).imePadding()) {
             // Notes
-            Section(Icons.AutoMirrored.Filled.Notes, "Notes") {
+            if (settings[Keys.detailNotes]) Section(Icons.AutoMirrored.Filled.Notes, "Notes") {
                 Box(Modifier.fillMaxWidth().padding(top = 4.dp)) {
                     if (task.notes.isEmpty()) Text("Tap to add notes", color = colors.textSecondary, fontSize = 14.sp)
                     BasicTextField(
@@ -278,7 +281,7 @@ fun TaskScreen(
             }
 
             // Sub Tasks
-            Section(
+            if (settings[Keys.detailSubTasks]) Section(
                 icon = Icons.Filled.Check,
                 label = "Sub Tasks",
                 trailing = {
@@ -314,7 +317,7 @@ fun TaskScreen(
             }
 
             // Tags
-            Section(Icons.Outlined.Label, "Tags") { Value("No tags selected", secondary = true) }
+            if (settings[Keys.detailTags]) Section(Icons.Outlined.Label, "Tags") { Value("No tags selected", secondary = true) }
 
             // Due Date
             CheckSection(
@@ -386,7 +389,7 @@ fun TaskScreen(
             }
 
             // Priority
-            Section(Icons.Filled.Flag, "Priority") {
+            if (settings[Keys.detailPriority]) Section(Icons.Filled.Flag, "Priority") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     listOf(Priority.NONE to "None", Priority.LOW to "Low", Priority.MEDIUM to "Medium", Priority.HIGH to "High").forEach { (value, label) ->
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { task = task.copy(priority = value) }) {
@@ -402,7 +405,7 @@ fun TaskScreen(
             }
 
             // Highlight
-            Section(
+            if (settings[Keys.detailHighlight]) Section(
                 icon = Icons.Filled.Star,
                 label = "Highlight",
                 onClick = { task = task.copy(highlight = !task.highlight) },
@@ -428,7 +431,7 @@ fun TaskScreen(
             }
 
             // Created
-            if (!isNew) {
+            if (!isNew && settings[Keys.detailCreated]) {
                 Section(Icons.Filled.Schedule, "Created") { Value("${formatDate(task.createdAt)} ${formatTime(task.createdAt)}", secondary = true) }
             }
             Spacer(Modifier.height(96.dp))
@@ -542,7 +545,10 @@ fun TaskScreen(
         Picker.MoveTo -> SubListChooser("List", lists, subLists, task.subListId, onDismiss = { picker = null }) { target ->
             task = task.copy(listId = target.listId, subListId = target.id)
         }
-        Picker.NewSubTask -> TextDialog("Sub Task", "", "Sub Task", onDismiss = { picker = null }) { subs.add(SubDraft(null, it, false)) }
+        Picker.NewSubTask -> TextDialog("Sub Task", "", "Sub Task", onDismiss = { picker = null }) {
+            // "Where should new sub-tasks be inserted?": 0 = top, 1 = bottom.
+            if (settings[Keys.insertNewSubTasks] == 0) subs.add(0, SubDraft(null, it, false)) else subs.add(SubDraft(null, it, false))
+        }
         is Picker.EditSubTask -> TextDialog("Sub Task", subs.getOrNull(p.index)?.title ?: "", "Sub Task", onDismiss = { picker = null }) { title ->
             subs.getOrNull(p.index)?.let { subs[p.index] = it.copy(title = title) }
         }
