@@ -42,6 +42,13 @@ A personal to-do app for Android, Windows and the web, with real-time sync and a
 - The signing key is kept in `android/signing/` because repository secrets could not be set from the build session. Keep the repo private.
 - Release `android-1` was signed with a temporary key; ignore it.
 
+## Automated test phone
+
+- `.github/workflows/screens.yml` builds a test version of the app (no sign-in, data in memory), starts an Android 12L emulator on GitHub, runs `tools/screens.py` to tap through the main flows, and publishes the screenshots as release `screens-<run>`. It runs on every push that touches `tools/` or the workflow file.
+- First used 16 Nov 2026 (runs 1 to 4). It showed the app starts without crashing and that quick add, the task screen, date picker, reminder and repeat dialogs, saving, ticking, new sub-list, both name dialogs, the overflow menu, Sort, the sidebar and Settings all work. It found two bugs, both fixed in build 15: typing went to the quick add box behind a new task screen, and the Priority row could run off a narrow screen.
+- The reference app cannot be run this way: it only starts when installed from the Play Store (its start-up protection needs parts the single APK file does not contain). Comparisons use its layouts and the owner's screenshots.
+- The test phone cannot check Google sign-in, sync, real notifications arriving with the app closed, or widgets on the home screen. Those still need the owner's phone.
+
 ## Milestones
 
 1. Data model, Firebase project, security rules, shared sync logic with tests. **Done.**
