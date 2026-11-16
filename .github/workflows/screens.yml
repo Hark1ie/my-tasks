@@ -1,6 +1,6 @@
 name: Screens
 
-# Runs My Tasks and the reference app on a test phone and publishes screenshots.
+# Runs My Tasks on a test phone, taps through its screens and publishes screenshots.
 on:
   push:
     branches: [main]
@@ -34,13 +34,15 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run both apps on a test phone
+      - name: Run the app on a test phone
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 32
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          cores: 4
+          ram-size: 4096M
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: python3 tools/screens.py
@@ -54,5 +56,5 @@ jobs:
           cd out && zip -qr screens.zip screens && ls -la screens.zip
           gh release create "screens-${{ github.run_number }}" screens.zip \
             --title "Test phone screenshots, run ${{ github.run_number }}" \
-            --notes "Screenshots of My Tasks and the reference app from the automated test phone." \
+            --notes "Screenshots of My Tasks from the automated test phone." \
             --latest=false

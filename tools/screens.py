@@ -38,6 +38,7 @@ class App:
         self.log_file.flush()
 
     def shot(self, name):
+        self.settle()
         self.n += 1
         base = os.path.join(self.dir, f"{self.n:02d}_{name}")
         png = subprocess.run(["adb", "exec-out", "screencap", "-p"], capture_output=True, timeout=60).stdout
@@ -47,7 +48,44 @@ class App:
         self.log("shot", os.path.basename(base), f"({len(nodes)} nodes)")
         return nodes
 
+    def settle(self):
+        """The test phone is slow; answer any "isn't responding" prompt with Wait."""
+        for _ in range(8):
+            raw = self._raw_dump()
+            if b"isn't responding" not in raw and b"keeps stopping" not in raw:
+                return
+            nodes = self._parse(raw)
+            wait = next((n for n in nodes if n["text"].strip().lower() == "wait"), None)
+            if wait is None:
+                wait = next((n for n in nodes if n["text"].strip().lower() in ("close app", "ok")), None)
+            if wait is not None:
+                self.log("system prompt, tapping", repr(wait["text"]))
+                self.tap(wait, 4)
+            else:
+                time.sleep(4)
+
+    def _raw_dump(self):
+        shell("uiautomator dump /sdcard/ui.xml")
+        return subprocess.run(["adb", "exec-out", "cat", "/sdcard/ui.xml"], capture_output=True, timeout=60).stdout
+
+    def _parse(self, raw):
+        nodes = []
+        try:
+            for el in ET.fromstring(raw.decode("utf-8", "replace")).iter("node"):
+                m = re.findall(r"\d+", el.get("bounds", ""))
+                if len(m) != 4:
+                    continue
+                nodes.append({
+                    "text": el.get("text", ""), "desc": el.get("content-desc", ""), "rid": el.get("resource-id", ""),
+                    "cls": el.get("class", ""), "clickable": el.get("clickable") == "true", "pkg": el.get("package", ""),
+                    "b": tuple(int(x) for x in m),
+                })
+        except ET.ParseError as e:
+            self.log("dump parse error", e)
+        return nodes
+
     def dump(self, save=None):
+        self.settle()
         shell("uiautomator dump /sdcard/ui.xml")
         raw = subprocess.run(["adb", "exec-out", "cat", "/sdcard/ui.xml"], capture_output=True, timeout=60).stdout
         if save:
@@ -137,8 +175,9 @@ class App:
         return "Success" in out
 
     def launch(self):
+        self.settle()
         shell(f"monkey -p {self.package} -c android.intent.category.LAUNCHER 1")
-        time.sleep(8)
+        time.sleep(12)
         self.shot("launch")
 
     def dismiss_dialogs(self):
@@ -266,7 +305,9 @@ REFERENCE = App("reference", "com.tasks.android", "reference/Tasks.apk", {
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     shell("settings put global window_animation_scale 0; settings put global transition_animation_scale 0; settings put global animator_duration_scale 0")
-    which = sys.argv[1:] or ["mine", "reference"]
+    time.sleep(25)  # let the freshly started phone finish its own start-up work
+    # The reference app only starts when installed from the Play Store, so it is not run by default.
+    which = sys.argv[1:] or ["mine"]
     for app in (MINE, REFERENCE):
         if app.key in which:
             app.run()

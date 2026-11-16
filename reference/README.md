@@ -1,5 +1,6 @@
 # Reference
 
-`Tasks.apk` is the owner's copy of the app that My Tasks is modelled on. It is
-kept here only so the screenshot job can install it on a test phone next to
-My Tasks and compare screens. It is not part of My Tasks and is never shipped.
+The app My Tasks is modelled on cannot be run on the automated test phone: it
+only starts when it was installed from the Play Store. Comparisons therefore
+use its layouts and the owner's screenshots from his own phone. The APK itself
+is not kept in this repository.
