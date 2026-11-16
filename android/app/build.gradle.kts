@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -9,7 +11,7 @@ val buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
 
 // Signing key and its password live in android/signing (see the README there).
 val signingDir = rootProject.file("signing")
-val signingProps = java.util.Properties().apply {
+val signingProps = Properties().apply {
     val f = signingDir.resolve("signing.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
