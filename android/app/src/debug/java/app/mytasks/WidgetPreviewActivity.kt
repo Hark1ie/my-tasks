@@ -1,10 +1,10 @@
 package app.mytasks
 
 import android.app.Activity
+import android.appwidget.AppWidgetHostView
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.TypedValue
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import app.mytasks.widgets.WidgetRenderer
@@ -24,9 +24,10 @@ class WidgetPreviewActivity : Activity() {
         val sub = WidgetRenderer.firstSubList(this)?.id
         fun add(kind: String, w: Int, h: Int) {
             root.addView(TextView(this).apply { text = kind; setTextColor(0xFFFFFFFF.toInt()) })
-            val host = FrameLayout(this)
+            // Android draws widget lists only inside a widget frame, as a home screen does.
+            val host = AppWidgetHostView(this)
             try {
-                host.addView(WidgetRenderer.preview(this, kind, sub).apply(this, host))
+                host.updateAppWidget(WidgetRenderer.preview(this, kind, sub))
             } catch (e: Exception) {
                 host.addView(TextView(this).apply { text = "Could not draw: $e"; setTextColor(0xFFFF5555.toInt()) })
             }

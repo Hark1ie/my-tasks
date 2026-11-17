@@ -310,6 +310,12 @@ class App:
         shell(f"am start -n {self.package}/.WidgetPreviewActivity")
         time.sleep(5)
         self.shot("widgets_preview")
+        # Tick the first task straight from the widget, then draw the widgets again.
+        if self.tap_first(self.dump(), [{"desc": "Mark as done", "pick": "highest"}], wait=4):
+            self.back()
+            shell(f"am start -n {self.package}/.WidgetPreviewActivity")
+            time.sleep(5)
+            self.shot("widgets_after_tick")
         self.back()
         # The widget settings dialog, opened the way the gear button opens it.
         shell(f"am start -n {self.package}/.widgets.WidgetConfigActivity --ei appWidgetId 7 --es app.mytasks.widget.MODE settings")
