@@ -303,6 +303,24 @@ class App:
         self.tap_first(self.dump(), [{"desc": "Save"}], wait=2.5)
         self.shot("after_saving_task")
 
+    def widget_preview(self):
+        if self.key != "mine":
+            return
+        # Expand the first task's sub-tasks? Keep data as the walk-through left it.
+        shell(f"am start -n {self.package}/.WidgetPreviewActivity")
+        time.sleep(5)
+        self.shot("widgets_preview")
+        self.back()
+        # The widget settings dialog, opened the way the gear button opens it.
+        shell(f"am start -n {self.package}/.widgets.WidgetConfigActivity --ei appWidgetId 7 --es app.mytasks.widget.MODE settings")
+        time.sleep(4)
+        self.shot("widget_settings")
+        self.back()
+        shell(f"am start -n {self.package}/.widgets.WidgetConfigActivity --ei appWidgetId 7 --es app.mytasks.widget.MODE choose")
+        time.sleep(4)
+        self.shot("widget_change_to")
+        self.back()
+
     def run(self):
         if not os.path.exists(self.apk):
             self.log("APK not found:", self.apk)
@@ -324,6 +342,7 @@ class App:
         self.step("main again", lambda: self.shot("main_again"))
         self.step("drawer", self.drawer)
         self.step("settings", self.settings)
+        self.step("widget preview", self.widget_preview)
         self.step("final", lambda: self.shot("final"))
         crash = shell(f"logcat -d -b crash | tail -n 60")
         with open(os.path.join(self.dir, "crash.txt"), "w") as f:

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/sub_background"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:minHeight="32dp"
+    android:orientation="horizontal"
+    android:paddingStart="44dp"
+    android:paddingEnd="8dp">
+
+    <ImageView
+        android:id="@+id/sub_checkbox"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:contentDescription="Mark sub task as done"
+        android:padding="4dp"
+        android:src="@drawable/ic_w_circle" />
+
+    <TextView
+        android:id="@+id/sub_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:layout_weight="1"
+        android:textColor="#FFFFFFFF"
+        android:textSize="14sp" />
+</LinearLayout>

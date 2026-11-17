@@ -117,6 +117,8 @@ import app.mytasks.core.Task
 import app.mytasks.core.TaskList
 import app.mytasks.core.isLive
 import app.mytasks.data.Keys
+import app.mytasks.OpenRequest
+import kotlinx.coroutines.flow.StateFlow
 import app.mytasks.data.Prefs
 import app.mytasks.data.SettingsState
 import app.mytasks.core.Schedule
@@ -156,7 +158,14 @@ private sealed interface Dialog {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> Unit)?) {
+fun MainScreen(
+    store: Store,
+    prefs: Prefs,
+    account: String?,
+    onSignOut: (() -> Unit)?,
+    openRequests: StateFlow<OpenRequest?>,
+    onOpenHandled: () -> Unit,
+) {
     val colors = appColors()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -185,7 +194,16 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
     val now = System.currentTimeMillis()
 
     val pagerState = rememberPagerState(pageCount = { subs.size })
-    LaunchedEffect(list?.id) { pagerState.scrollToPage(0) }
+    // Sub-list to show once its list is on screen (set when opening from a widget).
+    var targetSubId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(list?.id) { if (targetSubId == null) pagerState.scrollToPage(0) }
+    LaunchedEffect(targetSubId, subs) {
+        val index = subs.indexOfFirst { it.id == targetSubId }
+        if (index >= 0) {
+            pagerState.scrollToPage(index)
+            targetSubId = null
+        }
+    }
     val sub = subs.getOrNull(pagerState.currentPage.coerceIn(0, maxOf(subs.lastIndex, 0)))
 
     fun message(text: String) {
@@ -233,6 +251,29 @@ fun MainScreen(store: Store, prefs: Prefs, account: String?, onSignOut: (() -> U
             draft = draft.copy(dueAt = due, reminderMode = ReminderMode.WHEN_DUE)
         }
         return draft
+    }
+
+    // Opened from a widget: go to its sub-list, open a task, or start a new one.
+    val openRequest by openRequests.collectAsStateWithLifecycle()
+    LaunchedEffect(openRequest, ready, allSubLists, allTasks) {
+        val r = openRequest ?: return@LaunchedEffect
+        if (allSubLists.isEmpty()) return@LaunchedEffect
+        val task = r.taskId?.let { id -> allTasks.firstOrNull { it.id == id && it.isLive } }
+        if (r.taskId != null && task == null && !ready) return@LaunchedEffect
+        val target = allSubLists.firstOrNull { it.id == (task?.subListId ?: r.subListId) }
+        if (target != null) {
+            listId = target.listId
+            prefs.lastListId = target.listId
+            targetSubId = target.id
+        }
+        when {
+            task != null -> editing = task to false
+            r.newTask -> (target ?: sub)?.let { s ->
+                val draft = newDraft(s)
+                editing = (if (r.newTaskDue != null) draft.copy(dueAt = r.newTaskDue, allDay = true) else draft) to true
+            }
+        }
+        onOpenHandled()
     }
 
     ModalNavigationDrawer(

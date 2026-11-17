@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">My Tasks</string>
+    <string name="widget_calendar_label">Calendar</string>
+    <string name="widget_small_description">A list name and how many of its tasks are done</string>
+    <string name="widget_large_description">The tasks of one sub list. Tick them off without opening the app</string>
+    <string name="widget_calendar_description">Tasks due on a day, across all lists</string>
 </resources>

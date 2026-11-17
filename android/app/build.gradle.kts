@@ -76,6 +76,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("sh.calvin.reorderable:reorderable:2.4.3")
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
 
     // Sync and sign-in
     implementation(platform("com.google.firebase:firebase-bom:33.16.0"))

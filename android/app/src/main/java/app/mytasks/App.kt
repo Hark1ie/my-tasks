@@ -17,7 +17,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import app.mytasks.data.MemoryBackend
 import app.mytasks.data.Prefs
+import app.mytasks.data.Snapshot
 import app.mytasks.data.Store
+import app.mytasks.core.isLive
+import app.mytasks.widgets.WidgetRenderer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.withContext
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
@@ -36,6 +46,15 @@ sealed interface Session {
     data class SignedIn(val store: Store, val email: String?) : Session
 }
 
+/** Where the app should go when it is opened from a widget or a shortcut. */
+data class OpenRequest(
+    val subListId: String? = null,
+    val taskId: String? = null,
+    val newTask: Boolean = false,
+    /** For a new task from the calendar widget: the day it is due (all day). */
+    val newTaskDue: Long? = null,
+)
+
 class App : Application() {
     lateinit var prefs: Prefs
         private set
@@ -46,6 +65,18 @@ class App : Application() {
     private var store: Store? = null
     private val scope = MainScope()
     private var reminderJob: Job? = null
+    private var widgetJob: Job? = null
+
+    private val _openRequest = MutableStateFlow<OpenRequest?>(null)
+    val openRequest: StateFlow<OpenRequest?> = _openRequest
+
+    fun requestOpen(request: OpenRequest?) {
+        if (request != null) _openRequest.value = request
+    }
+
+    fun clearOpenRequest() {
+        _openRequest.value = null
+    }
 
     /** False when this build has no Firebase connection details. */
     val syncConfigured: Boolean
@@ -55,8 +86,13 @@ class App : Application() {
         super.onCreate()
         prefs = Prefs(this)
         Notifications.ensureChannels(this)
+        // Widgets also redraw when a setting they show changes (theme, headings, sort rules).
+        scope.launch { prefs.state.drop(1).collect { WidgetRenderer.updateAll(this@App) } }
         if (!syncConfigured) {
-            _session.value = Session.Local(Store(MemoryBackend(), prefs.deviceId).also { it.start() })
+            val s = Store(MemoryBackend(), prefs.deviceId).also { it.start() }
+            store = s
+            watchForWidgets(s)
+            _session.value = Session.Local(s)
             return
         }
         FirebaseAuth.getInstance().addAuthStateListener { auth ->
@@ -65,7 +101,12 @@ class App : Application() {
             store = null
             prefs.onSyncedChange = null
             reminderJob?.cancel()
-            if (user == null) ReminderScheduler.cancelAll(this)
+            widgetJob?.cancel()
+            if (user == null) {
+                ReminderScheduler.cancelAll(this)
+                Snapshot.clear(this)
+                WidgetRenderer.updateAll(this)
+            }
             _session.value = if (user == null) {
                 Session.SignedOut
             } else {
@@ -78,8 +119,74 @@ class App : Application() {
                 reminderJob = scope.launch {
                     s.tasks.collect { tasks -> if (s.ready.value || tasks.isNotEmpty()) ReminderScheduler.sync(this@App, tasks) }
                 }
+                watchForWidgets(s)
                 Session.SignedIn(s, user.email)
             }
+        }
+    }
+
+    /**
+     * Whenever the data changes, on this device or another, save a copy for the
+     * widgets and redraw them.
+     */
+    @OptIn(FlowPreview::class)
+    private fun watchForWidgets(s: Store) {
+        widgetJob = scope.launch {
+            combine(s.lists, s.subLists, s.tasks, s.subTasks, s.ready) { lists, subLists, tasks, subTasks, ready ->
+                if (ready) Snapshot(lists, subLists, tasks.filter { it.isLive }, subTasks) else null
+            }
+                .filterNotNull()
+                .debounce(300)
+                .collect { snap ->
+                    withContext(Dispatchers.IO) { Snapshot.save(this@App, snap) }
+                    WidgetRenderer.updateAll(this@App)
+                }
+        }
+    }
+
+    /** The data the widgets draw: live when loaded, otherwise the copy saved on the phone. */
+    fun widgetSnapshot(): Snapshot {
+        val s = store
+        if (s != null && s.ready.value) {
+            return Snapshot(s.lists.value, s.subLists.value, s.tasks.value.filter { it.isLive }, s.subTasks.value)
+        }
+        return Snapshot.load(this) ?: Snapshot.EMPTY
+    }
+
+    /** Waits until the signed-in data has loaded, for [timeoutMs] at most. */
+    suspend fun awaitReady(timeoutMs: Long) {
+        withTimeoutOrNull(timeoutMs) {
+            while (store?.ready?.value != true) delay(200)
+        }
+    }
+
+    /** Widget taps run here so they finish even after the tap's own screen has closed. */
+    fun toggleTaskInBackground(taskId: String) {
+        scope.launch {
+            val s = storeWith(taskId) ?: return@launch
+            s.toggleCompleted(taskId, keepHistory = prefs.state.value[Keys.saveRecurringHistory])
+        }
+    }
+
+    fun toggleSubTaskInBackground(subTaskId: String) {
+        scope.launch {
+            val s = withTimeoutOrNull(8_000) {
+                var found: Store? = null
+                while (found == null) {
+                    val cur = store
+                    if (cur != null && cur.subTasks.value.any { it.id == subTaskId }) found = cur else delay(100)
+                }
+                found
+            } ?: return@launch
+            s.toggleSubTask(subTaskId, completeParent = prefs.state.value[Keys.subTasksCompleteTask])
+        }
+    }
+
+    fun toggleExpandedInBackground(taskId: String) {
+        scope.launch {
+            val s = storeWith(taskId) ?: return@launch
+            val task = s.tasks.value.firstOrNull { it.id == taskId } ?: return@launch
+            s.setExpanded(taskId, !task.subTasksExpanded)
         }
     }
 

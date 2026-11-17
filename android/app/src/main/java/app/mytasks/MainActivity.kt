@@ -1,5 +1,6 @@
 package app.mytasks
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -23,8 +24,31 @@ import kotlinx.coroutines.launch
 private val FONT_SCALES = listOf(0.8f, 0.9f, 1f, 1.15f, 1.3f)
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        const val EXTRA_OPEN_SUB_LIST = "app.mytasks.OPEN_SUB_LIST"
+        const val EXTRA_OPEN_TASK = "app.mytasks.OPEN_TASK"
+        const val EXTRA_NEW_TASK = "app.mytasks.NEW_TASK"
+        const val EXTRA_NEW_TASK_DUE = "app.mytasks.NEW_TASK_DUE"
+    }
+
+    private fun readOpenRequest(intent: Intent?): OpenRequest? {
+        if (intent == null) return null
+        val sub = intent.getStringExtra(EXTRA_OPEN_SUB_LIST)
+        val task = intent.getStringExtra(EXTRA_OPEN_TASK)
+        val newTask = intent.getBooleanExtra(EXTRA_NEW_TASK, false)
+        val due = intent.getLongExtra(EXTRA_NEW_TASK_DUE, -1L).takeIf { it >= 0 }
+        if (sub == null && task == null && !newTask) return null
+        return OpenRequest(subListId = sub, taskId = task, newTask = newTask, newTaskDue = due)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        (application as App).requestOpen(readOpenRequest(intent))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) (application as App).requestOpen(readOpenRequest(intent))
         enableEdgeToEdge()
         val app = application as App
         setContent {
@@ -54,8 +78,17 @@ class MainActivity : ComponentActivity() {
                         prefs = app.prefs,
                         account = s.email,
                         onSignOut = { scope.launch { app.signOut(this@MainActivity) } },
+                        openRequests = app.openRequest,
+                        onOpenHandled = { app.clearOpenRequest() },
                     )
-                    is Session.Local -> MainScreen(store = s.store, prefs = app.prefs, account = null, onSignOut = null)
+                    is Session.Local -> MainScreen(
+                        store = s.store,
+                        prefs = app.prefs,
+                        account = null,
+                        onSignOut = null,
+                        openRequests = app.openRequest,
+                        onOpenHandled = { app.clearOpenRequest() },
+                    )
                 }
             }
         }
