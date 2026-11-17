@@ -41,6 +41,12 @@ class MainActivity : ComponentActivity() {
         return OpenRequest(subListId = sub, taskId = task, newTask = newTask, newTaskDue = due)
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Starting it while the app is on screen is always allowed.
+        (application as App).startBackgroundSync()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         (application as App).requestOpen(readOpenRequest(intent))

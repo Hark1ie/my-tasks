@@ -58,6 +58,6 @@ describe("settings", () => {
   it("has a unique reference key for every setting taken from the reference app", () => {
     const refs = Object.values(SETTINGS).map((s) => s.ref).filter((r): r is string => r !== null);
     expect(new Set(refs).size).toBe(refs.length);
-    expect(refs.length).toBeGreaterThanOrEqual(55);
+    expect(refs.length).toBe(Object.keys(SETTINGS).length - 1);
   });
 });

@@ -21,6 +21,9 @@ import app.mytasks.data.Snapshot
 import app.mytasks.data.Store
 import app.mytasks.core.isLive
 import app.mytasks.widgets.WidgetRenderer
+import app.mytasks.sync.SyncService
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.combine
@@ -88,6 +91,11 @@ class App : Application() {
         Notifications.ensureChannels(this)
         // Widgets also redraw when a setting they show changes (theme, headings, sort rules).
         scope.launch { prefs.state.drop(1).collect { WidgetRenderer.updateAll(this@App) } }
+        scope.launch {
+            prefs.state.map { it[Keys.alwaysOnSync] }.distinctUntilChanged().drop(1).collect { on ->
+                SyncService.update(this@App, on && session.value is Session.SignedIn)
+            }
+        }
         if (!syncConfigured) {
             val s = Store(MemoryBackend(), prefs.deviceId).also { it.start() }
             store = s
@@ -103,6 +111,7 @@ class App : Application() {
             reminderJob?.cancel()
             widgetJob?.cancel()
             if (user == null) {
+                SyncService.update(this, false)
                 ReminderScheduler.cancelAll(this)
                 Snapshot.clear(this)
                 WidgetRenderer.updateAll(this)
@@ -151,6 +160,11 @@ class App : Application() {
             return Snapshot(s.lists.value, s.subLists.value, s.tasks.value.filter { it.isLive }, s.subTasks.value)
         }
         return Snapshot.load(this) ?: Snapshot.EMPTY
+    }
+
+    /** Called when the app comes to the screen, and after the phone starts. */
+    fun startBackgroundSync() {
+        if (session.value is Session.SignedIn) SyncService.update(this, prefs.state.value[Keys.alwaysOnSync])
     }
 
     /** Waits until the signed-in data has loaded, for [timeoutMs] at most. */

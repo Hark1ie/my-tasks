@@ -19,6 +19,8 @@ object Keys {
     // Sync
     val syncOnClose = BoolKey("syncOnClose", true, synced = false)
     val syncWifiOnly = BoolKey("syncWifiOnly", false, synced = false)
+    /** Not in the reference app: keeps the live connection open while the app is closed. */
+    val alwaysOnSync = BoolKey("alwaysOnSync", true, synced = false)
 
     // Application Settings. Owner preset: Black theme (2); the reference default is Light (0).
     val theme = IntKey("theme", 2, synced = false)
@@ -85,7 +87,7 @@ object Keys {
     val muteAlarmOnCall = BoolKey("muteAlarmOnCall", true, synced = false)
 
     val all: List<Key<*>> = listOf(
-        syncOnClose, syncWifiOnly, theme, showCalendar, swipeToDelete, showQuickAdd, multiLineQuickAdd, keepScreenOn,
+        syncOnClose, syncWifiOnly, alwaysOnSync, theme, showCalendar, swipeToDelete, showQuickAdd, multiLineQuickAdd, keepScreenOn,
         vibrateUi, fontSize, defaultList, removeDeletedItemsDays, showMenuOnBack, showMenuOnOpen, moveCompletedToBottom,
         displayMode, taskPadding, tagSize, deleteListConfirmation, autoLink, showListColor, menuListInfo, subListHeading,
         insertNewTasks, insertNewSubTasks, notesView, reminderView, verboseDateTime, autoNumberTasks, autoNumberSubTasks,

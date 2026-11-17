@@ -6,7 +6,6 @@
  * in the last milestone can tick each one off.
  */
 
-import { ACCENT } from "./model.js";
 
 export type Scope = "synced" | "device";
 
@@ -48,12 +47,16 @@ export const ReminderView = { LeftAlign: 0, RightAlign: 1, Hide: 2 } as const;
 /** Codes are not in display order in the reference app: Forever, 15 s, 30 s, 1 min, 5 min, 10 min. */
 export const AlarmDuration = { Forever: 0, Min1: 1, Min5: 2, Min10: 3, Sec15: 4, Sec30: 5 } as const;
 
+/**
+ * Same names, defaults and sync scope as the Android app's Keys (data/Prefs.kt),
+ * which writes them to users/{uid}/settings/synced.
+ */
 export const SETTINGS = {
-  // Sync / Account
+  // Sync
   syncOnClose: def("sync", true, "device", "pref_key_sync_on_close"),
   syncWifiOnly: def("sync", false, "device", "pref_key_sync_wifi_only"),
-  /** Not in the reference app: keeps a live connection so the widget updates instantly. */
-  alwaysOnSync: def("sync", false, "device", null),
+  /** Not in the reference app: the phone keeps syncing while the app is closed. */
+  alwaysOnSync: def("sync", true, "device", null),
 
   // Application Settings
   theme: def("application", Theme.Light as number, "device", "pref_key_theme"),
@@ -64,8 +67,8 @@ export const SETTINGS = {
   keepScreenOn: def("application", false, "device", "pref_key_keep_screen_on"),
   vibrateUi: def("application", true, "device", "pref_key_vibrate_ui"),
   fontSize: def("application", FontSize.Normal as number, "device", "pref_key_font_size"),
-  /** `null` = first list; "continue" = continue where you left off; otherwise a list id. */
-  defaultList: def("application", null as string | null, "synced", "pref_key_default_list"),
+  /** "" = continue where you left off, otherwise a list id. */
+  defaultList: def("application", "", "synced", "pref_key_default_list"),
   removeDeletedItemsDays: def("application", 7, "synced", "pref_key_remove_deleted_items_days"),
   showMenuOnBack: def("application", false, "synced", "pref_key_show_menu_on_back"),
   showMenuOnOpen: def("application", false, "synced", "pref_key_show_menu_on_open"),
@@ -77,7 +80,6 @@ export const SETTINGS = {
   tagSize: def("list", DisplayMode.Comfortable as number, "device", "pref_key_tag_size"),
   deleteListConfirmation: def("list", true, "synced", "pref_key_delete_confirmation"),
   autoLink: def("list", true, "synced", "pref_key_auto_link"),
-  autoLinkTextColor: def("list", ACCENT, "synced", "pref_key_auto_link_text_color"),
   showListColor: def("list", true, "synced", "pref_key_show_list_color"),
   menuListInfo: def("list", HeadingInfo.CompletedOfTotal as number, "synced", "pref_key_menu_list_info"),
   subListHeading: def("list", HeadingInfo.CompletedOfTotal as number, "synced", "pref_key_sub_task_list_heading"),
@@ -97,6 +99,7 @@ export const SETTINGS = {
   subTasksExpandDefault: def("task", false, "synced", "pref_key_sub_tasks_expand_default"),
   enableReminders: def("task", false, "synced", "pref_key_enable_reminders"),
   defaultReminderType: def("task", 0, "synced", "pref_key_default_reminder_type"),
+  /** A Priority code: 0 none, 1 low, 2 medium, 3 high. */
   defaultPriority: def("task", 0, "synced", "pref_key_default_priority"),
   saveRecurringHistory: def("task", false, "synced", "pref_key_duplicate_on_complete"),
 
@@ -112,14 +115,10 @@ export const SETTINGS = {
   // Notification/Alarm Settings
   autoIncrementReminder: def("notification", false, "synced", "pref_key_auto_increment_reminder"),
   addFromNotification: def("notification", true, "device", "pref_key_add_from_notification"),
-  /** Sub-list that quick-added tasks go to. `null` = first sub-list of the default list. */
-  defaultAddSubList: def("notification", null as string | null, "synced", "pref_key_default_add_from_list"),
   completeClearsNotification: def("notification", true, "synced", "pref_key_complete_clears_notification"),
   persistentNotifications: def("notification", false, "synced", "pref_key_notification_persistent"),
   notificationVibrate: def("notification", true, "device", "pref_key_notification_vibrate"),
   notificationLed: def("notification", true, "device", "pref_key_notification_led"),
-  notificationSound: def("notification", null as string | null, "device", "pref_key_notification_sound_new"),
-  alarmSound: def("notification", null as string | null, "device", "pref_key_notification_alarm_new"),
   alarmDuration: def("notification", AlarmDuration.Forever as number, "device", "pref_key_alarm_duration"),
   /** Minutes, 0 to 10080. */
   customSnoozeMinutes: def("notification", 720, "synced", "pref_key_custom_snooze_duration"),

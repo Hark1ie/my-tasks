@@ -131,6 +131,11 @@ fun SettingsScreen(
             SettingRow("Account", account ?: "Not signed in")
             check(Keys.syncOnClose, "Sync when closing My Tasks", "Push any waiting changes when you leave the app")
             check(Keys.syncWifiOnly, "Sync on WiFi only", "Background sync waits for WiFi. Live sync while the app is open is not affected")
+            check(
+                Keys.alwaysOnSync,
+                "Always-on sync",
+                "Keep syncing while My Tasks is closed, so widgets and reminders update within seconds. Shows a small notification you can swipe away",
+            )
             SettingRow("Last sync", "Changes sync live while the app is open")
             if (onSignOut != null) SettingRow("Sign out", "Your tasks stay in the cloud", onClick = onSignOut)
             SettingRow("Delete account", "Permanently deletes your account and all data in the cloud", onClick = later)

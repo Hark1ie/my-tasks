@@ -75,6 +75,17 @@ class ReminderReceiver : BroadcastReceiver() {
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         ReminderScheduler.rescheduleSaved(context)
+        // After a restart the sign-in state is known shortly after the app starts.
+        val app = context.applicationContext as App
+        val pending = goAsync()
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                app.awaitReady(10_000)
+                app.startBackgroundSync()
+            } finally {
+                pending.finish()
+            }
+        }
     }
 }
 
