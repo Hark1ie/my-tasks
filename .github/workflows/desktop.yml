@@ -1,0 +1,63 @@
+name: Desktop build
+
+on:
+  push:
+    branches: [main]
+    paths: ["desktop/**", "core/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build the Windows installers
+        working-directory: desktop
+        run: |
+          ver="0.1.${{ github.run_number }}"
+          node -e "const f='src-tauri/tauri.conf.json',j=JSON.parse(require('fs').readFileSync(f));j.version='$ver';require('fs').writeFileSync(f,JSON.stringify(j,null,2))"
+          npx tauri build
+
+      - name: Name the installers
+        run: |
+          mkdir -p out
+          cp desktop/src-tauri/target/release/bundle/nsis/*.exe "out/MyTasks-Setup-${{ github.run_number }}.exe"
+          cp desktop/src-tauri/target/release/bundle/msi/*.msi "out/MyTasks-${{ github.run_number }}.msi"
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyTasks-windows
+          path: out/*
+
+      - name: Publish to the Releases page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "desktop-${{ github.run_number }}" out/* \
+            --title "My Tasks for Windows, build ${{ github.run_number }}" \
+            --notes "Run MyTasks-Setup to install. Newer builds install over older ones." \
+            --latest=false
