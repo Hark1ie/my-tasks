@@ -24,6 +24,8 @@ import type { Store } from "../data/store";
 import { ChoiceDialog, ConfirmDialog, ListDialog, ReorderDialog, SubListDialog } from "./Dialogs";
 import { SettingsScreen } from "./SettingsScreen";
 import { TaskScreen } from "./TaskScreen";
+import type { OpenRequest } from "./Widget";
+import { isTauri } from "../session";
 import { Icon, P } from "./icons";
 import { css, durationText, formatDate, formatTime } from "./format";
 
@@ -139,6 +141,29 @@ export function Main({ store, account, onSignOut }: { store: Store; account: str
   );
   const [order, setOrder] = useState<Task[]>(visible);
   useEffect(() => setOrder(visible), [visible]);
+
+  // The desktop widget asks this window to open a task or the new task screen.
+  const latest = useRef({ tasks, subLists, newDraft: (x: SubList) => newDraft(x) });
+  latest.current = { tasks, subLists, newDraft: (x: SubList) => newDraft(x) };
+  useEffect(() => {
+    if (!isTauri) return;
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    void import("@tauri-apps/api/event").then(({ listen }) =>
+      listen<OpenRequest>("open-request", ({ payload }) => {
+        const { tasks: all, subLists: sls, newDraft: draft } = latest.current;
+        setSettingsOpen(false);
+        if (payload.taskId) {
+          const t = all.find((x) => x.id === payload.taskId);
+          if (t) { setListId(t.listId); setEditing({ task: t, isNew: false }); }
+        } else if (payload.newInSubList) {
+          const target = sls.find((x) => x.id === payload.newInSubList);
+          if (target) { setListId(target.listId); setEditing({ task: draft(target), isNew: true }); }
+        }
+      }).then((un) => { if (cancelled) un(); else stop = un; }),
+    );
+    return () => { cancelled = true; stop?.(); };
+  }, []);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 

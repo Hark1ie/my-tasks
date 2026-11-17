@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore } from "react";
 import { settings } from "./data/settings";
 import { isTauri, session, signIn, signOut } from "./session";
 import { Main } from "./ui/Main";
+import { Widget } from "./ui/Widget";
 
 function SignIn() {
   const s = useSyncExternalStore(settings.subscribe, settings.get);
@@ -22,8 +23,9 @@ function SignIn() {
   );
 }
 
-export function App() {
+export function App({ widget = false }: { widget?: boolean }) {
   const s = useSyncExternalStore(session.subscribe, session.get);
+  if (widget) return <Widget store={s.kind === "signedIn" || s.kind === "demo" ? s.store : null} />;
   switch (s.kind) {
     case "loading":
       return <div className="signin theme-black"><p>Loading…</p></div>;

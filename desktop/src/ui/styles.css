@@ -167,3 +167,32 @@ input, textarea, select { font: inherit; color: var(--text); }
 .signin p { color: var(--text2); margin: 0 0 20px; max-width: 420px; }
 .btn { background: var(--accent); color: #000; border-radius: 20px; padding: 10px 24px; font-weight: 500; }
 .error { color: var(--overdue); white-space: pre-wrap; max-width: 520px; }
+
+/* PC desktop widget (its own small, frameless, see-through window) */
+body.widget-body { background: transparent; }
+.widget { position: relative; height: 100%; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; user-select: none; font-size: 14px; }
+.w-heading { display: flex; align-items: center; min-height: 40px; cursor: grab; }
+.w-title { flex: 1; font-size: 18px; font-weight: 700; padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.w-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+.w-icon:hover { background: rgba(128,128,128,.2); }
+.w-list { flex: 1; overflow-y: auto; padding-bottom: 64px; }
+.w-list::-webkit-scrollbar { width: 6px; }
+.w-list::-webkit-scrollbar-thumb { background: rgba(128,128,128,.4); border-radius: 3px; }
+.w-empty { height: 100%; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center; }
+.w-row { display: flex; align-items: center; min-height: 36px; }
+.w-strip { width: 8px; align-self: stretch; flex: none; }
+.w-check { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; flex: none; }
+.w-body { flex: 1; min-width: 0; padding: 6px 2px 6px 4px; cursor: pointer; overflow-wrap: anywhere; }
+.w-notes { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+.w-subcount { font-size: 12px; padding: 8px 10px 8px 8px; }
+.w-subrow { padding-left: 48px; gap: 8px; cursor: pointer; min-height: 32px; }
+.w-fab { position: absolute; right: 8px; bottom: 8px; width: 48px; height: 48px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,.4); }
+.w-grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+.w-dialog { min-width: 0; width: calc(100vw - 32px); max-height: calc(100vh - 32px); padding: 16px; border-radius: 16px; }
+.w-dialog h2 { font-size: 18px; margin-bottom: 8px; }
+.w-group { font-size: 13px; font-weight: 500; margin: 10px 0 2px; }
+.w-setting { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; font-size: 14px; }
+.w-setting input { accent-color: var(--accent); }
+.w-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0; text-align: left; font-size: 14px; color: inherit; }
+.w-toggle small { color: var(--text2); }
+.w-toggle:disabled { opacity: .4; }

@@ -2,18 +2,31 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "What the My Tasks window may do",
-  "windows": ["main"],
+  "windows": [
+    "main",
+    "widget"
+  ],
   "permissions": [
     "core:default",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://accounts.google.com/*" }]
+      "allow": [
+        {
+          "url": "https://accounts.google.com/*"
+        }
+      ]
     },
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://oauth2.googleapis.com/*" }]
+      "allow": [
+        {
+          "url": "https://oauth2.googleapis.com/*"
+        }
+      ]
     },
     "oauth:allow-start",
-    "oauth:allow-cancel"
+    "oauth:allow-cancel",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging"
   ]
 }
