@@ -43,10 +43,31 @@ fn show_main(app: &AppHandle) {
     }
 }
 
+/// Keeps the widget on the desktop. "Always at the bottom" puts it behind the
+/// desktop itself on Windows, so instead the widget is given the desktop window
+/// (Progman) as its owner: it then always sits just above the wallpaper, other
+/// windows cover it as normal, and "Show desktop" (Win+D) leaves it showing.
+#[cfg(windows)]
+fn attach_to_desktop(w: &tauri::WebviewWindow) {
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SetWindowLongPtrW, GWLP_HWNDPARENT};
+    if let (Ok(hwnd), Ok(progman)) = (w.hwnd(), unsafe { FindWindowW(w!("Progman"), PCWSTR::null()) }) {
+        unsafe {
+            SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, progman.0 as isize);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn attach_to_desktop(_w: &tauri::WebviewWindow) {}
+
 fn place_widget(app: &AppHandle, on_top: bool) {
     if let Some(w) = app.get_webview_window("widget") {
-        let _ = w.set_always_on_bottom(!on_top);
+        let _ = w.set_always_on_bottom(false);
         let _ = w.set_always_on_top(on_top);
+        if !on_top {
+            attach_to_desktop(&w);
+        }
     }
 }
 
@@ -115,9 +136,7 @@ pub fn run() {
             let on_top = prefs.get("onTop").and_then(Value::as_bool).unwrap_or(false);
             place_widget(&handle, on_top);
             if widget_on {
-                if let Some(w) = handle.get_webview_window("widget") {
-                    let _ = w.show();
-                }
+                set_widget_visible(&handle, true);
             }
 
             let open = MenuItem::with_id(app, "open", "Open My Tasks", true, None::<&str>)?;
