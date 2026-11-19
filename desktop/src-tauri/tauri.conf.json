@@ -38,7 +38,9 @@
         "alwaysOnBottom": true,
         "resizable": true,
         "visible": false,
-        "focus": false
+        "focus": false,
+        "minimizable": false,
+        "maximizable": false
       }
     ],
     "security": {

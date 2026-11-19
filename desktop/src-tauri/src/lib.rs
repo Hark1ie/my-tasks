@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use serde_json::{json, Value};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, WindowEvent};
+use tauri::{AppHandle, Manager, WindowEvent, Wry};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_window_state::StateFlags;
 
@@ -50,11 +50,26 @@ fn place_widget(app: &AppHandle, on_top: bool) {
     }
 }
 
+/// The tray menu's "Show desktop widget" tick, kept so it can follow changes made elsewhere.
+struct WidgetMenuItem(CheckMenuItem<Wry>);
+
 fn set_widget_visible(app: &AppHandle, visible: bool) {
     if let Some(w) = app.get_webview_window("widget") {
         let _ = if visible { w.show() } else { w.hide() };
+        if visible {
+            let _ = w.unminimize();
+        }
+    }
+    if let Some(item) = app.try_state::<WidgetMenuItem>() {
+        let _ = item.0.set_checked(visible);
     }
     save_pref(app, "widget", json!(visible));
+}
+
+/// From the main window's sidebar.
+#[tauri::command]
+fn show_widget(app: AppHandle) {
+    set_widget_visible(&app, true);
 }
 
 #[tauri::command]
@@ -81,7 +96,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_oauth::init())
-        .invoke_handler(tauri::generate_handler![open_main, set_widget_on_top])
+        .invoke_handler(tauri::generate_handler![open_main, set_widget_on_top, show_widget])
         .setup(|app| {
             let handle = app.handle().clone();
             let prefs = load_prefs(&handle);
@@ -115,6 +130,7 @@ pub fn run() {
             let sep = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(app, &[&open, &widget, &login, &sep, &quit])?;
 
+            app.manage(WidgetMenuItem(widget.clone()));
             let (widget_item, login_item) = (widget.clone(), login.clone());
             TrayIconBuilder::with_id("tray")
                 .icon(app.default_window_icon().expect("app icon").clone())
@@ -142,11 +158,19 @@ pub fn run() {
         .on_window_event(|window, event| {
             // Closing the main window keeps My Tasks running in the tray, so the
             // widget stays live; Quit is in the tray menu.
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
+            match event {
+                WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
                     api.prevent_close();
                     let _ = window.hide();
                 }
+                // "Show desktop" (Win+D) minimises windows; the widget belongs on the
+                // desktop, so it comes straight back.
+                WindowEvent::Resized(_) if window.label() == "widget" => {
+                    if window.is_minimized().unwrap_or(false) {
+                        let _ = window.unminimize();
+                    }
+                }
+                _ => {}
             }
         })
         .run(tauri::generate_context!())

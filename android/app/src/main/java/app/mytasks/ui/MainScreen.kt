@@ -69,6 +69,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -332,7 +333,6 @@ fun MainScreen(
     ) {
         Scaffold(
             containerColor = colors.background,
-            snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
                 TopAppBar(
                     expandedHeight = 56.dp,
@@ -406,16 +406,6 @@ fun MainScreen(
                     ),
                 )
             },
-            floatingActionButton = {
-                if (sub != null) {
-                    FloatingActionButton(
-                        onClick = { editing = newDraft(sub) to true },
-                        shape = CircleShape,
-                        containerColor = colors.accent,
-                        contentColor = Color.Black,
-                    ) { Icon(Icons.Filled.Add, contentDescription = "Add task") }
-                }
-            },
             bottomBar = {
                 if (st[Keys.showQuickAdd] && sub != null) {
                     QuickAddBar(colors, multiLine = st[Keys.multiLineQuickAdd]) { text ->
@@ -429,7 +419,8 @@ fun MainScreen(
                 }
             },
         ) { inner ->
-            Column(Modifier.padding(inner).fillMaxSize()) {
+            Box(Modifier.padding(inner).fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
                 if (list == null || subs.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         if (!ready) CircularProgressIndicator(color = colors.accent)
@@ -470,6 +461,36 @@ fun MainScreen(
                                 onDeleted = { id -> deleted("Task deleted", listOf(id)) },
                                 onOpen = { editing = it to false },
                             )
+                        }
+                    }
+                }
+            }
+                // The add button and the snackbar sit at the bottom, just above the quick
+                // add bar; a snackbar pushes the button up and can be swiped away.
+                Column(
+                    Modifier.align(Alignment.BottomEnd).fillMaxWidth(),
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    if (sub != null) {
+                        FloatingActionButton(
+                            onClick = { editing = newDraft(sub) to true },
+                            modifier = Modifier.padding(16.dp),
+                            shape = CircleShape,
+                            containerColor = colors.accent,
+                            contentColor = Color.Black,
+                        ) { Icon(Icons.Filled.Add, contentDescription = "Add task") }
+                    }
+                    SnackbarHost(snackbar) { data ->
+                        key(data) {
+                            val swipe = rememberSwipeToDismissBoxState(
+                                confirmValueChange = { value ->
+                                    if (value != SwipeToDismissBoxValue.Settled) data.dismiss()
+                                    value != SwipeToDismissBoxValue.Settled
+                                },
+                            )
+                            SwipeToDismissBox(state = swipe, backgroundContent = {}) {
+                                Snackbar(data, modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp))
+                            }
                         }
                     }
                 }

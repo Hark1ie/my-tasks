@@ -261,6 +261,11 @@ export function Main({ store, account, onSignOut }: { store: Store; account: str
         <div className="side-divider" />
         <button className="side-row" onClick={later}><Icon d={P.help} /><span className="grow">Help</span></button>
         <button className="side-row" onClick={() => setSettingsOpen(true)}><Icon d={P.settings} /><span className="grow">Settings</span></button>
+        {isTauri && (
+          <button className="side-row" onClick={() => void import("@tauri-apps/api/core").then(({ invoke }) => invoke("show_widget"))}>
+            <Icon d={P.list} /><span className="grow">Show desktop widget</span>
+          </button>
+        )}
       </nav>
 
       <main className="main">
