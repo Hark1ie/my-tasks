@@ -34,6 +34,19 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      - name: Add the Google sign-in key
+        working-directory: desktop
+        env:
+          CLIENT_ID: ${{ secrets.DESKTOP_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DESKTOP_CLIENT_SECRET }}
+        run: |
+          if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
+            echo "::warning::DESKTOP_CLIENT_ID / DESKTOP_CLIENT_SECRET secrets are not set; the app will build but cannot sign in."
+          else
+            sed -i "s|DESKTOP_CLIENT_ID = \"\"|DESKTOP_CLIENT_ID = \"$CLIENT_ID\"|; s|DESKTOP_CLIENT_SECRET = \"\"|DESKTOP_CLIENT_SECRET = \"$CLIENT_SECRET\"|" src/oauthClient.ts
+            grep -q "apps.googleusercontent.com" src/oauthClient.ts
+          fi
+
       - name: Build the Windows installers
         working-directory: desktop
         run: |
