@@ -81,30 +81,36 @@ fn ensure_widget_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     tauri::WebviewWindowBuilder::from_config(app, &config).ok()?.build().ok()
 }
 
-/// Every few seconds: if the widget should be showing, make sure it exists, is
-/// visible and is attached to the current desktop. Covers start at login (the
-/// desktop appears after My Tasks starts), Explorer restarts and Win+D.
-fn watch_widget(app: AppHandle) {
-    std::thread::spawn(move || loop {
-        std::thread::sleep(std::time::Duration::from_secs(3));
-        let prefs = load_prefs(&app);
-        if !prefs.get("widget").and_then(Value::as_bool).unwrap_or(true) {
-            continue;
-        }
-        let on_top = prefs.get("onTop").and_then(Value::as_bool).unwrap_or(false);
-        let Some(w) = ensure_widget_window(&app) else { continue };
-        if !w.is_visible().unwrap_or(true) {
-            let _ = w.show();
-        }
-        if w.is_minimized().unwrap_or(false) {
-            let _ = w.unminimize();
-        }
-        if on_top {
-            if !w.is_always_on_top().unwrap_or(true) {
-                let _ = w.set_always_on_top(true);
+/// Set when the user chooses Quit, so closing windows is not mistaken for
+/// Windows closing the widget.
+static QUITTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Puts the widget on the desktop once the desktop is there. Runs only at start
+/// and when Windows itself closes the widget (Explorer reloading the desktop,
+/// which also happens while signing in), never on a timer. It waits up to two
+/// minutes for the desktop to appear, then stops.
+fn bring_up_widget(app: AppHandle) {
+    std::thread::spawn(move || {
+        for _ in 0..120 {
+            if QUITTING.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
             }
-        } else {
-            attach_to_desktop(&w);
+            let prefs = load_prefs(&app);
+            if !prefs.get("widget").and_then(Value::as_bool).unwrap_or(true) {
+                return;
+            }
+            let on_top = prefs.get("onTop").and_then(Value::as_bool).unwrap_or(false);
+            if let Some(w) = ensure_widget_window(&app) {
+                let _ = w.show();
+                if on_top {
+                    let _ = w.set_always_on_top(true);
+                    return;
+                }
+                if attach_to_desktop(&w) {
+                    return;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_secs(1));
         }
     });
 }
@@ -185,7 +191,7 @@ pub fn run() {
             let on_top = prefs.get("onTop").and_then(Value::as_bool).unwrap_or(false);
             place_widget(&handle, on_top);
             if widget_on {
-                set_widget_visible(&handle, true);
+                bring_up_widget(handle.clone());
             }
 
             let open = MenuItem::with_id(app, "open", "Open My Tasks", true, None::<&str>)?;
@@ -199,7 +205,6 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&open, &widget, &login, &sep, &quit])?;
 
             app.manage(WidgetMenuItem(widget.clone()));
-            watch_widget(handle.clone());
             let (widget_item, login_item) = (widget.clone(), login.clone());
             TrayIconBuilder::with_id("tray")
                 .icon(app.default_window_icon().expect("app icon").clone())
@@ -213,7 +218,10 @@ pub fn run() {
                         let on = login_item.is_checked().unwrap_or(false);
                         let _ = if on { app.autolaunch().enable() } else { app.autolaunch().disable() };
                     }
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        QUITTING.store(true, std::sync::atomic::Ordering::Relaxed);
+                        app.exit(0)
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -237,6 +245,13 @@ pub fn run() {
                 WindowEvent::Resized(_) if window.label() == "widget" => {
                     if window.is_minimized().unwrap_or(false) {
                         let _ = window.unminimize();
+                    }
+                }
+                // Windows closed the widget without the user asking (the desktop
+                // reloaded): put it back.
+                WindowEvent::Destroyed if window.label() == "widget" => {
+                    if !QUITTING.load(std::sync::atomic::Ordering::Relaxed) {
+                        bring_up_widget(window.app_handle().clone());
                     }
                 }
                 _ => {}
