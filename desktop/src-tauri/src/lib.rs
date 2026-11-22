@@ -47,26 +47,74 @@ fn show_main(app: &AppHandle) {
 /// desktop itself on Windows, so instead the widget is given the desktop window
 /// (Progman) as its owner: it then always sits just above the wallpaper, other
 /// windows cover it as normal, and "Show desktop" (Win+D) leaves it showing.
+/// Returns false when the desktop is not there yet (just after signing in).
 #[cfg(windows)]
-fn attach_to_desktop(w: &tauri::WebviewWindow) {
+fn attach_to_desktop(w: &tauri::WebviewWindow) -> bool {
     use windows::core::{w, PCWSTR};
-    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SetWindowLongPtrW, GWLP_HWNDPARENT};
-    if let (Ok(hwnd), Ok(progman)) = (w.hwnd(), unsafe { FindWindowW(w!("Progman"), PCWSTR::null()) }) {
-        unsafe {
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindowLongPtrW, SetWindowLongPtrW, GWLP_HWNDPARENT};
+    let (Ok(hwnd), Ok(progman)) = (w.hwnd(), unsafe { FindWindowW(w!("Progman"), PCWSTR::null()) }) else {
+        return false;
+    };
+    if progman.is_invalid() {
+        return false;
+    }
+    unsafe {
+        if GetWindowLongPtrW(hwnd, GWLP_HWNDPARENT) != progman.0 as isize {
             SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, progman.0 as isize);
         }
     }
+    true
 }
 
 #[cfg(not(windows))]
-fn attach_to_desktop(_w: &tauri::WebviewWindow) {}
+fn attach_to_desktop(_w: &tauri::WebviewWindow) -> bool {
+    true
+}
+
+/// Makes the widget window again from tauri.conf.json if Windows closed it
+/// (this happens when Explorer restarts, which also happens while signing in).
+fn ensure_widget_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    if let Some(w) = app.get_webview_window("widget") {
+        return Some(w);
+    }
+    let config = app.config().app.windows.iter().find(|c| c.label == "widget")?.clone();
+    tauri::WebviewWindowBuilder::from_config(app, &config).ok()?.build().ok()
+}
+
+/// Every few seconds: if the widget should be showing, make sure it exists, is
+/// visible and is attached to the current desktop. Covers start at login (the
+/// desktop appears after My Tasks starts), Explorer restarts and Win+D.
+fn watch_widget(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let prefs = load_prefs(&app);
+        if !prefs.get("widget").and_then(Value::as_bool).unwrap_or(true) {
+            continue;
+        }
+        let on_top = prefs.get("onTop").and_then(Value::as_bool).unwrap_or(false);
+        let Some(w) = ensure_widget_window(&app) else { continue };
+        if !w.is_visible().unwrap_or(true) {
+            let _ = w.show();
+        }
+        if w.is_minimized().unwrap_or(false) {
+            let _ = w.unminimize();
+        }
+        if on_top {
+            if !w.is_always_on_top().unwrap_or(true) {
+                let _ = w.set_always_on_top(true);
+            }
+        } else {
+            attach_to_desktop(&w);
+        }
+    });
+}
 
 fn place_widget(app: &AppHandle, on_top: bool) {
     if let Some(w) = app.get_webview_window("widget") {
         let _ = w.set_always_on_bottom(false);
         let _ = w.set_always_on_top(on_top);
         if !on_top {
-            attach_to_desktop(&w);
+            let _ = attach_to_desktop(&w);
         }
     }
 }
@@ -75,7 +123,8 @@ fn place_widget(app: &AppHandle, on_top: bool) {
 struct WidgetMenuItem(CheckMenuItem<Wry>);
 
 fn set_widget_visible(app: &AppHandle, visible: bool) {
-    if let Some(w) = app.get_webview_window("widget") {
+    let window = if visible { ensure_widget_window(app) } else { app.get_webview_window("widget") };
+    if let Some(w) = window {
         let _ = if visible { w.show() } else { w.hide() };
         if visible {
             let _ = w.unminimize();
@@ -150,6 +199,7 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&open, &widget, &login, &sep, &quit])?;
 
             app.manage(WidgetMenuItem(widget.clone()));
+            watch_widget(handle.clone());
             let (widget_item, login_item) = (widget.clone(), login.clone());
             TrayIconBuilder::with_id("tray")
                 .icon(app.default_window_icon().expect("app icon").clone())
