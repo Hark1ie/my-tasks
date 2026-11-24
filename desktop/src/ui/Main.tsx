@@ -153,7 +153,14 @@ export function Main({ store, account, onSignOut }: { store: Store; account: str
       listen<OpenRequest>("open-request", ({ payload }) => {
         const { tasks: all, subLists: sls, newDraft: draft } = latest.current;
         setSettingsOpen(false);
-        if (payload.taskId) {
+        if (payload.subListId) {
+          const target = sls.find((x) => x.id === payload.subListId);
+          if (target) {
+            setEditing(null);
+            setListId(target.listId);
+            setSubIndex(Math.max(0, sls.filter((x) => x.listId === target.listId).findIndex((x) => x.id === target.id)));
+          }
+        } else if (payload.taskId) {
           const t = all.find((x) => x.id === payload.taskId);
           if (t) { setListId(t.listId); setEditing({ task: t, isNew: false }); }
         } else if (payload.newInSubList) {

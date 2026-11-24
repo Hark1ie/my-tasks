@@ -3,7 +3,7 @@
  * Same heading, rows, colours and options (background and item transparency,
  * add button, font size); tapping a task opens it in the main window.
  */
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { type SubList, type SubTask, type Task, PRIORITY_COLORS, ReminderMode, headingTitle, isLive, isOverdue, visibleTasks } from "@core";
 import { settings as model } from "../data/settings";
 import type { State, Store } from "../data/store";
@@ -47,7 +47,7 @@ async function tauri() {
 }
 
 /** Asks the main window to open a task, or the new task screen. */
-export type OpenRequest = { taskId?: string; newInSubList?: string };
+export type OpenRequest = { taskId?: string; newInSubList?: string; subListId?: string };
 async function openInMain(req: OpenRequest) {
   if (!isTauri) return;
   const t = await tauri();
@@ -84,15 +84,31 @@ export function Widget({ store }: { store: Store | null }) {
   const rows = sub ? visibleTasks(own, { sortOrder: sub.sortOrder, moveCompletedToBottom: s.moveCompletedToBottom, hideCompleted: sub.hideCompleted }) : [];
   const subsOf = (t: Task): SubTask[] => subTasks.filter((x) => x.taskId === t.id);
   const add = () => sub && void openInMain({ newInSubList: sub.id });
-  const drag = (e: React.MouseEvent) => { if (e.button === 0 && isTauri) void tauri().then((t) => t.win.startDragging()); };
+  // The heading moves the widget when dragged; a plain click on the title opens
+  // that sub-list in the app, as on the phone.
+  const press = useRef<{ x: number; y: number; title: boolean } | null>(null);
+  const down = (e: React.MouseEvent, title: boolean) => { if (e.button === 0) press.current = { x: e.screenX, y: e.screenY, title }; };
+  const move = (e: React.MouseEvent) => {
+    const p = press.current;
+    if (p && (Math.abs(e.screenX - p.x) > 4 || Math.abs(e.screenY - p.y) > 4)) {
+      press.current = null;
+      if (isTauri) void tauri().then((t) => t.win.startDragging());
+    }
+  };
+  const up = () => {
+    const p = press.current;
+    press.current = null;
+    if (p?.title && sub) void openInMain({ subListId: sub.id });
+  };
   const resize = (e: React.MouseEvent) => { e.preventDefault(); if (isTauri) void tauri().then((t) => t.win.startResizeDragging("SouthEast")); };
   const noteLines = [0, 2, 1, -1][s.notesView] ?? 0;
 
   return (
     <div className={`widget theme-${themeName}`} style={{ background: `rgba(${pal.background},${o.backgroundAlpha / 255})`, color: pal.text }}>
-      <div className="w-heading" style={{ background: `rgba(${pal.heading},${o.backgroundAlpha / 255})` }} onMouseDown={drag}>
+      <div className="w-heading" style={{ background: `rgba(${pal.heading},${o.backgroundAlpha / 255})` }}
+        onMouseDown={(e) => down(e, false)} onMouseMove={move} onMouseUp={up} onMouseLeave={() => (press.current = null)}>
         <button className="w-icon" title="Change list" onMouseDown={(e) => e.stopPropagation()} onClick={() => setDialog("change")}><Icon d={P.list} color={pal.icon} size={22} /></button>
-        <span className="w-title">{!store ? "My Tasks" : sub ? headingTitle(sub.title, own, s.subListHeading as never, now) : "My Tasks"}</span>
+        <span className="w-title" title="Open in My Tasks" onMouseDown={(e) => { e.stopPropagation(); down(e, true); }}>{!store ? "My Tasks" : sub ? headingTitle(sub.title, own, s.subListHeading as never, now) : "My Tasks"}</span>
         {o.showAdd && o.addInHeading && <button className="w-icon" title="Add task" onMouseDown={(e) => e.stopPropagation()} onClick={add}><Icon d={P.add} color={pal.icon} size={22} /></button>}
         <button className="w-icon" title="Widget settings" onMouseDown={(e) => e.stopPropagation()} onClick={() => setDialog("settings")}><Icon d={P.settings} color={pal.icon} size={22} /></button>
       </div>
