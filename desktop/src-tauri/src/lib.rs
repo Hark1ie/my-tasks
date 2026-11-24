@@ -177,10 +177,12 @@ pub fn run() {
             let handle = app.handle().clone();
             let prefs = load_prefs(&handle);
 
-            // Start at login is on from the first run; the tray menu turns it off.
-            if prefs.get("autostartSet").is_none() {
+            // Start at login is on unless the user turned it off in the tray menu.
+            // It is checked on every run, because installing a newer build
+            // uninstalls the old one first, and that removes the entry.
+            let autostart = prefs.get("autostart").and_then(Value::as_bool).unwrap_or(true);
+            if autostart && !handle.autolaunch().is_enabled().unwrap_or(false) {
                 let _ = handle.autolaunch().enable();
-                save_pref(&handle, "autostartSet", json!(true));
             }
             let started_at_login = std::env::args().any(|a| a == "--autostart");
             if !started_at_login {
@@ -217,6 +219,7 @@ pub fn run() {
                     "login" => {
                         let on = login_item.is_checked().unwrap_or(false);
                         let _ = if on { app.autolaunch().enable() } else { app.autolaunch().disable() };
+                        save_pref(app, "autostart", json!(on));
                     }
                     "quit" => {
                         QUITTING.store(true, std::sync::atomic::Ordering::Relaxed);
