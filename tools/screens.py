@@ -290,6 +290,7 @@ class App:
             self.back()
 
     def new_task(self):
+        time.sleep(7)  # let an earlier "Task deleted" message go, so the add button is back in place
         nodes = self.dump()
         if not self.tap_first(nodes, self.ids["fab"], wait=2.5):
             return
