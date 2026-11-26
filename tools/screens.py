@@ -171,6 +171,8 @@ class App:
     # ---- scenario ----
 
     def install(self):
+        # Show the on-screen keyboard even though the emulator reports a hardware one.
+        shell("settings put secure show_ime_with_hard_keyboard 1")
         r = adb("install", "-r", "-g", self.apk, timeout=300)
         out = (r.stdout + r.stderr).decode("utf-8", "replace").strip()
         self.log("install:", out[-300:])
@@ -269,6 +271,7 @@ class App:
         nodes = self.dump()
         if not self.tap_first(nodes, [{"desc": "New Sub List"}], wait=2):
             return
+        self.shot("new_sub_list_keyboard")
         nodes = self.dump()
         if self.tap_first(nodes, [{"cls": "EditText", "pick": "highest"}]):
             self.type("Tuesday 17th")
@@ -290,6 +293,10 @@ class App:
         nodes = self.dump()
         if not self.tap_first(nodes, self.ids["fab"], wait=2.5):
             return
+        # The keyboard should already be up, with no tap on the name field.
+        ime = shell("dumpsys input_method | grep -E 'mInputShown|mIsInputViewShown|mServedView'")
+        self.log("keyboard after add:", ime.strip().replace("\n", " | ") if isinstance(ime, str) else ime)
+        self.shot("task_screen_keyboard")
         self.type("Read chapter 4")
         shell("input keyevent 111")
         time.sleep(1)
