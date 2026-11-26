@@ -1,5 +1,6 @@
 package app.mytasks.ui
 
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -73,6 +74,7 @@ private fun PanelDialog(
     onDismiss: () -> Unit,
     onDelete: (() -> Unit)?,
     onSave: () -> Unit,
+    autoFocus: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = appColors()
@@ -88,6 +90,7 @@ private fun PanelDialog(
                 Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 18.dp)) {
                     Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(12.dp))
+                    val focus = rememberKeyboardFocus(enabled = autoFocus)
                     BasicTextField(
                         value = name,
                         onValueChange = onName,
@@ -97,6 +100,7 @@ private fun PanelDialog(
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .focusRequester(focus)
                             .padding(horizontal = 4.dp)
                             .drawBehind {
                                 val y = size.height + 6.dp.toPx()
@@ -150,6 +154,7 @@ fun ListDialog(
             if (name.isNotBlank()) onSave(name, color)
             onDismiss()
         },
+        autoFocus = list == null,
     ) {
         ColorWheel(color = color, onColor = { color = it }, modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp))
     }
@@ -178,6 +183,7 @@ fun SubListDialog(
             if (name.isNotBlank()) onSave(name, target)
             onDismiss()
         },
+        autoFocus = sub == null,
     ) {
         Text(
             "Where should completed tasks go?",

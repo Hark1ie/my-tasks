@@ -216,10 +216,10 @@ fun TaskScreen(
     BackHandler { close() }
 
     // A new task starts with the cursor in its name; an existing one opens without the keyboard.
-    val titleFocus = remember { FocusRequester() }
+    val titleFocus = rememberKeyboardFocus(enabled = isNew)
     val focusManager = LocalFocusManager.current
     LaunchedEffect(Unit) {
-        if (isNew) titleFocus.requestFocus() else focusManager.clearFocus()
+        if (!isNew) focusManager.clearFocus()
     }
 
     Scaffold(

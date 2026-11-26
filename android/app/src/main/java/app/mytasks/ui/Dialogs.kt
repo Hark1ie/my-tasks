@@ -1,5 +1,7 @@
 package app.mytasks.ui
 
+import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,6 +54,29 @@ import app.mytasks.core.TaskList
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
+/**
+ * A focus requester that, when [enabled], puts the cursor in its field and
+ * opens the keyboard as soon as the screen or dialog appears, so typing can
+ * start straight away.
+ */
+@Composable
+fun rememberKeyboardFocus(enabled: Boolean = true): FocusRequester {
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(enabled) {
+        if (!enabled) return@LaunchedEffect
+        // Wait for the field to be laid out (dialogs and the task screen animate in).
+        repeat(10) {
+            delay(60)
+            if (runCatching { focus.requestFocus() }.isSuccess) {
+                keyboard?.show()
+                return@LaunchedEffect
+            }
+        }
+    }
+    return focus
+}
+
 @Composable
 private fun DialogButton(label: String, onClick: () -> Unit) {
     TextButton(onClick = onClick) { Text(label, color = appColors().accent) }
@@ -59,8 +84,7 @@ private fun DialogButton(label: String, onClick: () -> Unit) {
 
 @Composable
 private fun NameField(value: TextFieldValue, hint: String, onChange: (TextFieldValue) -> Unit) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    val focus = rememberKeyboardFocus()
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
