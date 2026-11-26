@@ -395,6 +395,12 @@ class Store(
         }
     }
 
+    /** Highlights a task in [color], or removes the highlight when [color] is null. */
+    fun setHighlight(taskId: String, color: Long?) {
+        val task = current(taskId) ?: return
+        put(task.copy(highlight = color != null, highlightColor = color ?: task.highlightColor, updatedAt = stamp(), updatedBy = deviceId))
+    }
+
     private fun current(taskId: String): Task? = _tasks.value.firstOrNull { it.id == taskId }
 
     /** Ticks or unticks the task as it is stored now. */

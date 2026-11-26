@@ -2,6 +2,15 @@ package app.mytasks.ui
 
 import android.Manifest
 import android.content.Intent
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import app.mytasks.core.HIGHLIGHT_COLORS
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import app.mytasks.reminders.Notifications
@@ -390,11 +399,11 @@ fun MainScreen(
                                     sub?.let { store.setHideCompleted(it, !it.hideCompleted) }
                                 }
                                 HorizontalDivider(color = colors.divider)
-                                MenuEntry("Remove Completed", close) { sub?.let { deleted("Tasks deleted", store.removeCompleted(it)) } }
+                                MenuEntry("Remove Completed", close, { sub?.let { deleted("Tasks deleted", store.removeCompleted(it)) } }, Color(0xFFF4511E))
                                 MenuEntry("Delete Sub List", close) {
                                     sub?.let { if (!store.deleteSubList(it)) message("A task list must have at least one sub list.") }
                                 }
-                                MenuEntry("Delete All", close) { sub?.let { deleted("Tasks deleted", store.deleteAll(it)) } }
+                                MenuEntry("Delete All", close, { sub?.let { deleted("Tasks deleted", store.deleteAll(it)) } }, Color(0xFFF4511E))
                             }
                         }
                     },
@@ -458,7 +467,10 @@ fun MainScreen(
                                 subTasks = subTasksByTask,
                                 st = st,
                                 store = store,
+                                lists = lists,
+                                subLists = allSubLists,
                                 onDeleted = { id -> deleted("Task deleted", listOf(id)) },
+                                onDeletedMany = { ids -> deleted("Tasks deleted", ids) },
                                 onOpen = { editing = it to false },
                             )
                         }
@@ -626,6 +638,56 @@ private fun durationText(ms: Long): String {
     return if (parts.isEmpty()) "less than a minute" else parts.joinToString(" ")
 }
 
+/** The menu a long press on a task opens, in the reference app's order. */
+@Composable
+private fun TaskMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onMoveToTop: () -> Unit,
+    onMove: () -> Unit,
+    onShare: () -> Unit,
+    onDuplicate: () -> Unit,
+    onAddToCalendar: () -> Unit,
+    onHighlight: () -> Unit,
+    onUncheckCompleted: () -> Unit,
+    onMoveToBottom: () -> Unit,
+    onRemoveCompleted: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val red = Color(0xFFF4511E)
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = DpOffset(80.dp, (-24).dp)) {
+        MenuEntry("Move to top", onDismiss, onMoveToTop)
+        MenuEntry("Move task", onDismiss, onMove)
+        MenuEntry("Share task", onDismiss, onShare)
+        MenuEntry("Duplicate task", onDismiss, onDuplicate)
+        MenuEntry("Add to calendar", onDismiss, onAddToCalendar)
+        MenuEntry("Highlight", onDismiss, onHighlight)
+        MenuEntry("Uncheck Completed", onDismiss, onUncheckCompleted)
+        MenuEntry("Move to bottom", onDismiss, onMoveToBottom)
+        MenuEntry("Remove Completed", onDismiss, onRemoveCompleted, red)
+        MenuEntry("Delete task", onDismiss, onDelete, red)
+    }
+}
+
+/** Opens the calendar app's new-event screen filled in from the task. */
+private fun addToCalendar(context: android.content.Context, task: Task) {
+    val insert = Intent(Intent.ACTION_INSERT).apply {
+        data = android.provider.CalendarContract.Events.CONTENT_URI
+        putExtra(android.provider.CalendarContract.Events.TITLE, task.title)
+        if (task.notes.isNotBlank()) putExtra(android.provider.CalendarContract.Events.DESCRIPTION, task.notes)
+        task.dueAt?.let { due ->
+            putExtra(android.provider.CalendarContract.EXTRA_EVENT_BEGIN_TIME, due)
+            putExtra(android.provider.CalendarContract.EXTRA_EVENT_END_TIME, if (task.allDay) due else due + 60 * 60 * 1000L)
+            putExtra(android.provider.CalendarContract.EXTRA_EVENT_ALL_DAY, task.allDay)
+        }
+    }
+    try {
+        context.startActivity(insert)
+    } catch (e: android.content.ActivityNotFoundException) {
+        android.widget.Toast.makeText(context, "No calendar app found", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
 /** Opens the system share sheet with a task's title and notes. */
 private fun shareTask(context: android.content.Context, task: Task) {
     val text = if (task.notes.isBlank()) task.title else task.title + "\n" + task.notes
@@ -637,9 +699,9 @@ private fun shareTask(context: android.content.Context, task: Task) {
 }
 
 @Composable
-private fun MenuEntry(label: String, close: () -> Unit, action: () -> Unit) {
+private fun MenuEntry(label: String, close: () -> Unit, action: () -> Unit, color: Color? = null) {
     DropdownMenuItem(
-        text = { Text(label) },
+        text = { Text(label, color = color ?: Color.Unspecified) },
         onClick = {
             close()
             action()
@@ -744,7 +806,7 @@ private fun SubListTabs(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun TaskPage(
     sub: SubList,
@@ -752,11 +814,20 @@ private fun TaskPage(
     subTasks: Map<String, List<SubTask>>,
     st: SettingsState,
     store: Store,
+    lists: List<TaskList>,
+    subLists: List<SubList>,
     onDeleted: (String) -> Unit,
+    onDeletedMany: (List<String>) -> Unit,
     onOpen: (Task) -> Unit,
 ) {
     val colors = appColors()
+    val context = LocalContext.current
     val moveCompleted = st[Keys.moveCompletedToBottom]
+    // Long-press menu and the dialogs it opens.
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    var moving by remember { mutableStateOf<Task?>(null) }
+    var highlighting by remember { mutableStateOf<Task?>(null) }
+    val atTop = st[Keys.insertNewTasks] == 0
     val visible = remember(tasks, sub.sortOrder, sub.hideCompleted, moveCompleted) {
         Lists.visibleTasks(tasks, sub.sortOrder, moveCompleted, sub.hideCompleted)
     }
@@ -821,13 +892,62 @@ private fun TaskPage(
                         onToggleSubTask = { store.toggleSubTask(it, completeParent = st[Keys.subTasksCompleteTask]) },
                         onExpand = { store.setExpanded(task.id, !task.subTasksExpanded) },
                         onClick = { onOpen(task) },
+                        onLongClick = { buzz(); menuFor = task.id },
+                    )
+                    TaskMenu(
+                        expanded = menuFor == task.id,
+                        onDismiss = { menuFor = null },
+                        onMoveToTop = { store.moveTaskToEdge(task.id, top = true) },
+                        onMove = { moving = task },
+                        onShare = { shareTask(context, task) },
+                        onDuplicate = { store.duplicateTask(task.id) },
+                        onAddToCalendar = { addToCalendar(context, task) },
+                        onHighlight = { highlighting = task },
+                        onUncheckCompleted = { store.uncheckCompleted(sub) },
+                        onMoveToBottom = { store.moveTaskToEdge(task.id, top = false) },
+                        onRemoveCompleted = { onDeletedMany(store.removeCompleted(sub)) },
+                        onDelete = onDelete,
                     )
                 }
             }
         }
     }
+
+    moving?.let { task ->
+        SubListChooser("Move task", lists, subLists, task.subListId, onDismiss = { moving = null }) { target ->
+            store.moveTasksTo(listOf(task.id), target, atTop)
+            moving = null
+        }
+    }
+    highlighting?.let { task ->
+        AlertDialog(
+            onDismissRequest = { highlighting = null },
+            title = { Text("Highlight") },
+            text = {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HIGHLIGHT_COLORS.forEach { c ->
+                        Box(
+                            Modifier.size(32.dp).background(Color(c), CircleShape)
+                                .border(if (task.highlight && task.highlightColor == c) 2.dp else 0.dp, colors.text, CircleShape)
+                                .clickable {
+                                    store.setHighlight(task.id, c)
+                                    highlighting = null
+                                },
+                        )
+                    }
+                }
+            },
+            dismissButton = if (task.highlight) {
+                { TextButton(onClick = { store.setHighlight(task.id, null); highlighting = null }) { Text("REMOVE", color = colors.accent) } }
+            } else {
+                null
+            },
+            confirmButton = { TextButton(onClick = { highlighting = null }) { Text("CANCEL", color = colors.accent) } },
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TaskRow(
     task: Task,
@@ -841,6 +961,7 @@ private fun TaskRow(
     onToggleSubTask: (String) -> Unit,
     onExpand: () -> Unit,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     val now = System.currentTimeMillis()
     val priorityColor = PRIORITY_COLORS[task.priority]?.let { Color(it) }
@@ -851,7 +972,7 @@ private fun TaskRow(
     val notesLines = listOf(Int.MAX_VALUE, 2, 1, 0).getOrElse(st[Keys.notesView]) { Int.MAX_VALUE }
     Column(Modifier.background(if (dragging) colors.surface else colors.background)) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).clickable(onClick = onClick),
+            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).combinedClickable(onClick = onClick, onLongClick = onLongClick),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Highlight strip down the left edge.
