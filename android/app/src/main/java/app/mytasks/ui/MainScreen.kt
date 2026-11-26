@@ -399,11 +399,11 @@ fun MainScreen(
                                     sub?.let { store.setHideCompleted(it, !it.hideCompleted) }
                                 }
                                 HorizontalDivider(color = colors.divider)
-                                MenuEntry("Remove Completed", close, { sub?.let { deleted("Tasks deleted", store.removeCompleted(it)) } }, Color(0xFFF4511E))
+                                MenuEntry("Remove Completed", close, Color(0xFFF4511E)) { sub?.let { deleted("Tasks deleted", store.removeCompleted(it)) } }
                                 MenuEntry("Delete Sub List", close) {
                                     sub?.let { if (!store.deleteSubList(it)) message("A task list must have at least one sub list.") }
                                 }
-                                MenuEntry("Delete All", close, { sub?.let { deleted("Tasks deleted", store.deleteAll(it)) } }, Color(0xFFF4511E))
+                                MenuEntry("Delete All", close, Color(0xFFF4511E)) { sub?.let { deleted("Tasks deleted", store.deleteAll(it)) } }
                             }
                         }
                     },
@@ -656,16 +656,16 @@ private fun TaskMenu(
 ) {
     val red = Color(0xFFF4511E)
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = DpOffset(80.dp, (-24).dp)) {
-        MenuEntry("Move to top", onDismiss, onMoveToTop)
-        MenuEntry("Move task", onDismiss, onMove)
-        MenuEntry("Share task", onDismiss, onShare)
-        MenuEntry("Duplicate task", onDismiss, onDuplicate)
-        MenuEntry("Add to calendar", onDismiss, onAddToCalendar)
-        MenuEntry("Highlight", onDismiss, onHighlight)
-        MenuEntry("Uncheck Completed", onDismiss, onUncheckCompleted)
-        MenuEntry("Move to bottom", onDismiss, onMoveToBottom)
-        MenuEntry("Remove Completed", onDismiss, onRemoveCompleted, red)
-        MenuEntry("Delete task", onDismiss, onDelete, red)
+        MenuEntry("Move to top", onDismiss, action = onMoveToTop)
+        MenuEntry("Move task", onDismiss, action = onMove)
+        MenuEntry("Share task", onDismiss, action = onShare)
+        MenuEntry("Duplicate task", onDismiss, action = onDuplicate)
+        MenuEntry("Add to calendar", onDismiss, action = onAddToCalendar)
+        MenuEntry("Highlight", onDismiss, action = onHighlight)
+        MenuEntry("Uncheck Completed", onDismiss, action = onUncheckCompleted)
+        MenuEntry("Move to bottom", onDismiss, action = onMoveToBottom)
+        MenuEntry("Remove Completed", onDismiss, red, onRemoveCompleted)
+        MenuEntry("Delete task", onDismiss, red, onDelete)
     }
 }
 
@@ -699,7 +699,7 @@ private fun shareTask(context: android.content.Context, task: Task) {
 }
 
 @Composable
-private fun MenuEntry(label: String, close: () -> Unit, action: () -> Unit, color: Color? = null) {
+private fun MenuEntry(label: String, close: () -> Unit, color: Color? = null, action: () -> Unit) {
     DropdownMenuItem(
         text = { Text(label, color = color ?: Color.Unspecified) },
         onClick = {

@@ -244,6 +244,27 @@ class App:
         if self.tap_first(nodes, [{"desc": "Mark as done", "pick": "lowest"}]):
             self.shot("task_ticked")
 
+    def long_press_menu(self):
+        def press():
+            node = self.find(self.dump(), desc="Mark as done", pick="highest")
+            if not node:
+                self.log("no task to long-press")
+                return False
+            x, y = self.center(node)
+            shell(f"input swipe {x + 300} {y} {x + 300} {y} 900")
+            time.sleep(1.5)
+            return True
+        if not press():
+            return
+        self.shot("task_long_press_menu")
+        if self.tap_first(self.dump(), [{"text": "Highlight"}]):
+            self.shot("task_highlight_dialog")
+            self.back()
+        if press() and self.tap_first(self.dump(), [{"text": "Duplicate task"}]):
+            self.shot("task_duplicated")
+        if press() and self.tap_first(self.dump(), [{"text": "Delete task"}], wait=0.8):
+            self.shot("task_deleted_from_menu")
+
     def new_sub_list(self):
         nodes = self.dump()
         if not self.tap_first(nodes, [{"desc": "New Sub List"}], wait=2):
@@ -339,6 +360,7 @@ class App:
         self.step("add tasks", self.add_tasks)
         self.step("open task", self.open_task)
         self.step("tick", self.tick)
+        self.step("long press menu", self.long_press_menu)
         self.step("new task", self.new_task)
         self.step("new sub list", self.new_sub_list)
         self.step("list dialog", self.list_dialog)
