@@ -2,6 +2,7 @@ package app.mytasks.ui
 
 import android.Manifest
 import android.content.Intent
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.border
@@ -655,17 +656,30 @@ private fun TaskMenu(
     onDelete: () -> Unit,
 ) {
     val red = Color(0xFFF4511E)
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = DpOffset(80.dp, (-24).dp)) {
-        MenuEntry("Move to top", onDismiss, action = onMoveToTop)
-        MenuEntry("Move task", onDismiss, action = onMove)
-        MenuEntry("Share task", onDismiss, action = onShare)
-        MenuEntry("Duplicate task", onDismiss, action = onDuplicate)
-        MenuEntry("Add to calendar", onDismiss, action = onAddToCalendar)
-        MenuEntry("Highlight", onDismiss, action = onHighlight)
-        MenuEntry("Uncheck Completed", onDismiss, action = onUncheckCompleted)
-        MenuEntry("Move to bottom", onDismiss, action = onMoveToBottom)
-        MenuEntry("Remove Completed", onDismiss, red, onRemoveCompleted)
-        MenuEntry("Delete task", onDismiss, red, onDelete)
+    // Sized like the reference: about 245dp wide, 60dp rows, 17sp text.
+    @Composable
+    fun Entry(label: String, color: Color? = null, action: () -> Unit) = DropdownMenuItem(
+        text = { Text(label, color = color ?: Color.Unspecified, fontSize = 17.sp) },
+        onClick = { onDismiss(); action() },
+        modifier = Modifier.height(60.dp),
+        contentPadding = PaddingValues(horizontal = 20.dp),
+    )
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        offset = DpOffset(60.dp, (-24).dp),
+        modifier = Modifier.widthIn(min = 245.dp),
+    ) {
+        Entry("Move to top", action = onMoveToTop)
+        Entry("Move task", action = onMove)
+        Entry("Share task", action = onShare)
+        Entry("Duplicate task", action = onDuplicate)
+        Entry("Add to calendar", action = onAddToCalendar)
+        Entry("Highlight", action = onHighlight)
+        Entry("Uncheck Completed", action = onUncheckCompleted)
+        Entry("Move to bottom", action = onMoveToBottom)
+        Entry("Remove Completed", red, onRemoveCompleted)
+        Entry("Delete task", red, onDelete)
     }
 }
 
