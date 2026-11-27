@@ -145,9 +145,9 @@ object WidgetRenderer {
     fun render(context: Context, manager: AppWidgetManager, id: Int) {
         val provider = manager.getAppWidgetInfo(id)?.provider?.className ?: return
         val views = when (provider) {
-            SmallListWidget::class.java.name -> small(context, id, WidgetPrefs.get(context, id))
+            SmallListWidget::class.java.name -> small(context, id, resolved(context, id))
             CalendarWidget::class.java.name -> calendar(context, id, WidgetPrefs.get(context, id))
-            else -> large(context, id, WidgetPrefs.get(context, id))
+            else -> large(context, id, resolved(context, id))
         }
         manager.updateAppWidget(id, views)
     }
@@ -192,6 +192,34 @@ object WidgetRenderer {
 
     private fun fillIn(action: String, task: String, sub: String? = null) =
         Intent().putExtra(EXTRA_ACTION, action).putExtra(EXTRA_TASK, task).apply { if (sub != null) putExtra(EXTRA_SUB_TASK, sub) }
+
+    /**
+     * The widget's options with its sub-list checked. If the chosen sub-list has
+     * been deleted, the widget moves to the sub-list that came after it in the
+     * same list (or the one before, if it was the last); if the whole list is
+     * gone, to the first sub-list of the first list. The new choice is saved.
+     */
+    private fun resolved(context: Context, id: Int): WidgetOptions {
+        val o = WidgetPrefs.get(context, id)
+        val chosen = o.subListId ?: return o
+        val data = (context.applicationContext as App).widgetSnapshot()
+        val live = data.subLists.filter { it.deletedAt == null }
+        if (live.isEmpty()) return o // not loaded yet, or signed out
+        live.firstOrNull { it.id == chosen }?.let { sub ->
+            if (o.listId != sub.listId || o.rank != sub.rank) {
+                WidgetPrefs.put(context, id, o.copy(listId = sub.listId, rank = sub.rank))
+            }
+            return o
+        }
+        val sameList = live.filter { it.listId == o.listId }.sortedBy { it.rank }
+        val pick = (o.rank?.let { r -> sameList.firstOrNull { it.rank > r } } ?: sameList.lastOrNull())
+            ?: data.lists.filter { it.deletedAt == null }.sortedBy { it.rank }
+                .firstNotNullOfOrNull { l -> live.filter { it.listId == l.id }.minByOrNull { it.rank } }
+            ?: live.minBy { it.rank }
+        val next = o.copy(subListId = pick.id, listId = pick.listId, rank = pick.rank)
+        WidgetPrefs.put(context, id, next)
+        return next
+    }
 
     // ---- widgets ----
 

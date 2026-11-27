@@ -21,6 +21,12 @@ data class WidgetOptions(
     val tagSize: Int = 2,
     /** Day shown by a calendar widget, as the start of that day. Null = today. */
     val day: Long? = null,
+    /**
+     * List and position of the shown sub-list, remembered so that if it is
+     * deleted the widget can move to the sub-list that came after it.
+     */
+    val listId: String? = null,
+    val rank: String? = null,
 )
 
 object WidgetPrefs {
@@ -39,6 +45,8 @@ object WidgetPrefs {
             fontSize = p.getInt("font_$id", 2),
             tagSize = p.getInt("tag_$id", 2),
             day = p.getLong("day_$id", -1L).takeIf { it >= 0 },
+            listId = p.getString("list_$id", null),
+            rank = p.getString("rank_$id", null),
         )
     }
 
@@ -52,12 +60,14 @@ object WidgetPrefs {
             .putInt("font_$id", o.fontSize)
             .putInt("tag_$id", o.tagSize)
             .putLong("day_$id", o.day ?: -1L)
+            .putString("list_$id", o.listId)
+            .putString("rank_$id", o.rank)
             .apply()
     }
 
     fun remove(context: Context, id: Int) {
         val e = sp(context).edit()
-        for (k in listOf("sub", "bg", "item", "fab", "moveAdd", "font", "tag", "day")) e.remove("${k}_$id")
+        for (k in listOf("sub", "bg", "item", "fab", "moveAdd", "font", "tag", "day", "list", "rank")) e.remove("${k}_$id")
         e.apply()
     }
 }

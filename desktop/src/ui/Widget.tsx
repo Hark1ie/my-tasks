@@ -3,7 +3,7 @@
  * Same heading, rows, colours and options (background and item transparency,
  * add button, font size); tapping a task opens it in the main window.
  */
-import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { type SubList, type SubTask, type Task, PRIORITY_COLORS, ReminderMode, headingTitle, isLive, isOverdue, visibleTasks } from "@core";
 import { settings as model } from "../data/settings";
 import type { State, Store } from "../data/store";
@@ -14,6 +14,8 @@ import { css, formatDate, formatTime } from "./format";
 
 export type WidgetOptions = {
   listId: string | null;
+  /** Position of the shown sub-list, so a deleted one can be replaced by the next. */
+  rank: string | null;
   subListId: string | null;
   backgroundAlpha: number;
   itemAlpha: number;
@@ -24,7 +26,7 @@ export type WidgetOptions = {
 };
 
 const KEY = "mytasks.widget";
-const DEFAULTS: WidgetOptions = { listId: null, subListId: null, backgroundAlpha: 165, itemAlpha: 165, showAdd: true, addInHeading: false, fontSize: 2, onTop: false };
+const DEFAULTS: WidgetOptions = { listId: null, rank: null, subListId: null, backgroundAlpha: 165, itemAlpha: 165, showAdd: true, addInHeading: false, fontSize: 2, onTop: false };
 const FONT_PX = [12, 14, 16, 18, 20];
 const FONT_NAMES = ["Smallest", "Small", "Normal", "Large", "Largest"];
 
@@ -76,9 +78,20 @@ export function Widget({ store }: { store: Store | null }) {
   const now = Date.now();
 
   const { lists, subLists, tasks, subTasks } = state;
-  const sub: SubList | undefined =
-    subLists.find((x) => x.id === o.subListId) ??
-    subLists.find((x) => x.listId === (lists.find((l) => l.id === o.listId) ?? lists[0])?.id);
+  // If the shown sub-list was deleted, move to the one after it in the same list
+  // (or the one before, if it was last); if the list is gone, the first list's first.
+  const sub: SubList | undefined = useMemo(() => {
+    const found = subLists.find((x) => x.id === o.subListId);
+    if (found || subLists.length === 0) return found;
+    const same = subLists.filter((x) => x.listId === o.listId).sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
+    return (o.rank !== null ? same.find((x) => x.rank > o.rank!) : undefined) ?? same[same.length - 1]
+      ?? lists.map((l) => subLists.find((x) => x.listId === l.id)).find((x) => x !== undefined);
+  }, [subLists, lists, o.subListId, o.listId, o.rank]);
+  // Remember the shown sub-list's place (and any replacement) for next time.
+  useEffect(() => {
+    if (sub && (sub.id !== o.subListId || sub.listId !== o.listId || sub.rank !== o.rank)) update({ subListId: sub.id, listId: sub.listId, rank: sub.rank });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sub?.id, sub?.listId, sub?.rank]);
   const live = tasks.filter(isLive);
   const own = sub ? live.filter((t) => t.subListId === sub.id) : [];
   const rows = sub ? visibleTasks(own, { sortOrder: sub.sortOrder, moveCompletedToBottom: s.moveCompletedToBottom, hideCompleted: sub.hideCompleted }) : [];
@@ -171,7 +184,7 @@ export function Widget({ store }: { store: Store | null }) {
               <div key={l.id}>
                 <div className="w-group" style={{ color: css(l.color) }}>{l.title}</div>
                 {subLists.filter((x) => x.listId === l.id).map((x) => (
-                  <button key={x.id} className="radio-row" onClick={() => { update({ listId: l.id, subListId: x.id }); setDialog(null); }}>
+                  <button key={x.id} className="radio-row" onClick={() => { update({ listId: l.id, subListId: x.id, rank: x.rank }); setDialog(null); }}>
                     <Radio on={x.id === sub?.id} /><span>{x.title}</span>
                   </button>
                 ))}
